@@ -191,7 +191,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'مدير النظام',
         'admin',
         TRUE
-      ) ON CONFLICT (email) DO NOTHING;
+      ) ON CONFLICT (email) DO UPDATE SET
+        password = ${adminPassword},
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        email_verified = EXCLUDED.email_verified;
     `;
 
     // 8. Seed Student User
@@ -205,7 +209,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'أحمد محمد',
         'student',
         TRUE
-      ) ON CONFLICT (email) DO NOTHING;
+      ) ON CONFLICT (email) DO UPDATE SET
+        password = ${studentPassword},
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        email_verified = EXCLUDED.email_verified;
     `;
 
     return res.status(200).json({
