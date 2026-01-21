@@ -1,0 +1,209 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "name": "أحمد محمد",
+      "nameEn": "Ahmed Mohamed",
+      "email": "ahmed@example.com",
+      "password": "123456",
+      "role": "student",
+      "avatar": "https://ui-avatars.com/api/?name=Ahmed+M&background=064e3b&color=fff&size=100",
+      "points": 1250,
+      "level": 5,
+      "streak": 12,
+      "joinDate": "2024-01-15"
+    },
+    {
+      "id": "2",
+      "name": "مدير النظام",
+      "nameEn": "System Admin",
+      "email": "admin@example.com",
+      "password": "admin123",
+      "role": "admin",
+      "avatar": "https://ui-avatars.com/api/?name=Admin&background=5E35B1&color=fff&size=100",
+      "points": 0,
+      "level": 0,
+      "streak": 0,
+      "joinDate": "2024-01-01"
+    },
+    {
+      "email": "test@test.com",
+      "password": "$2a$10$lnBxGgbdPzQ1MPcxFHUSSOHkaO.efYVi8UGyRWSg8jkeEhTop3hQ2",
+      "name": "Test User",
+      "id": "ASmf57U"
+    },
+    {
+      "email": "test3@test.com",
+      "password": "$2a$10$utuMnrGXo9j/oR.JW7n44uLB8FGGfMFy/nFidqEhySMbIX/a2hH42",
+      "name": "Test User 3",
+      "id": "5i6THHq"
+    }
+  ],
+  "courses": [
+    {
+      "id": "1",
+      "title": "تزكية النفس",
+      "titleEn": "Purification of the Soul (Tazkiyah)",
+      "instructor": "الشيخ محمد",
+      "instructorEn": "Sheikh Mohammed",
+      "progress": 0,
+      "category": "التزكية",
+      "categoryEn": "Tazkiyah",
+      "duration": "1س 50د",
+      "durationEn": "1h 50m",
+      "thumbnail": "https://images.unsplash.com/photo-1609599006353-e629aaabfeae?w=400&h=225&fit=crop",
+      "description": "دورة في تزكية النفس وتهذيب الأخلاق",
+      "descriptionEn": "Course on purification of the soul and refinement of character",
+      "lessonsCount": 12,
+      "studentsCount": 245,
+      "videoUrl": "https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/Tazkiyah/Tazkiyah1.mp4"
+    },
+    {
+      "id": "2",
+      "title": "أصول العقيدة الإسلامية",
+      "titleEn": "Fundamentals of Islamic Creed (Aqeeda)",
+      "instructor": "د. أحمد العقيدي",
+      "instructorEn": "Dr. Ahmed Al-Aqeedi",
+      "progress": 0,
+      "category": "العقيدة",
+      "categoryEn": "Aqeeda",
+      "duration": "2س 15د",
+      "durationEn": "2h 15m",
+      "thumbnail": "https://images.unsplash.com/photo-1564769625905-50e93615e769?w=400&h=225&fit=crop",
+      "description": "دورة شاملة في أصول العقيدة الإسلامية",
+      "descriptionEn": "Comprehensive course on the fundamentals of Islamic creed",
+      "lessonsCount": 25,
+      "studentsCount": 189,
+      "videoUrl": "https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/aqeeda/Aqeeda1.mp4"
+    },
+    {
+      "id": "3",
+      "title": "فقه الصلاة",
+      "titleEn": "Jurisprudence of Prayer",
+      "instructor": "الشيخ أحمد",
+      "instructorEn": "Sheikh Ahmed",
+      "progress": 45,
+      "category": "الفقه",
+      "categoryEn": "Fiqh",
+      "duration": "45د متبقية",
+      "durationEn": "45m remaining",
+      "thumbnail": "https://images.unsplash.com/photo-1519817650390-64a93db51149?w=400&h=225&fit=crop",
+      "description": "شرح مفصل لأحكام الصلاة",
+      "descriptionEn": "Detailed explanation of prayer rules",
+      "lessonsCount": 8,
+      "studentsCount": 312
+    },
+    {
+      "id": "4",
+      "title": "بناء الشخصية المسلمة",
+      "titleEn": "Building Muslim Character",
+      "instructor": "إمام زيد",
+      "instructorEn": "Imam Zaid",
+      "progress": 10,
+      "category": "الأخلاق",
+      "categoryEn": "Ethics",
+      "duration": "3س 45د",
+      "durationEn": "3h 45m",
+      "thumbnail": "https://images.unsplash.com/photo-1585036156171-384164a8c675?w=400&h=225&fit=crop",
+      "description": "تنمية الشخصية الإسلامية",
+      "descriptionEn": "Developing Islamic personality",
+      "lessonsCount": 15,
+      "studentsCount": 156
+    },
+    {
+      "id": "5",
+      "title": "المالية الإسلامية 101",
+      "titleEn": "Islamic Finance 101",
+      "instructor": "أ. أمينة",
+      "instructorEn": "Prof. Amina",
+      "progress": 80,
+      "category": "المعاملات",
+      "categoryEn": "Transactions",
+      "duration": "4س",
+      "durationEn": "4h",
+      "thumbnail": "https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=400&h=225&fit=crop",
+      "description": "أساسيات التمويل الإسلامي",
+      "descriptionEn": "Basics of Islamic finance",
+      "lessonsCount": 10,
+      "studentsCount": 98
+    },
+    {
+      "id": "6",
+      "title": "السيرة النبوية العطرة",
+      "titleEn": "The Prophetic Biography",
+      "instructor": "الشيخ عمر",
+      "instructorEn": "Sheikh Omar",
+      "progress": 0,
+      "category": "السيرة",
+      "categoryEn": "Seerah",
+      "duration": "5س",
+      "durationEn": "5h",
+      "thumbnail": "https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=400&h=225&fit=crop",
+      "description": "سيرة النبي محمد صلى الله عليه وسلم",
+      "descriptionEn": "Biography of Prophet Muhammad (PBUH)",
+      "lessonsCount": 20,
+      "studentsCount": 423
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "1",
+      "courseId": "1",
+      "title": "اختبار جزء عم",
+      "titleEn": "Juz Amma Quiz",
+      "questions": [
+        {
+          "id": 1,
+          "text": "أي من العلماء المسلمين في العصر الذهبي معروف بمساهماته في الطب؟",
+          "textEn": "Which Muslim scholar from the Golden Age is known for contributions to medicine?",
+          "options": [
+            "الخوارزمي",
+            "ابن سينا",
+            "البيروني",
+            "الفارابي"
+          ],
+          "optionsEn": [
+            "Al-Khwarizmi",
+            "Ibn Sina (Avicenna)",
+            "Al-Biruni",
+            "Al-Farabi"
+          ],
+          "correctAnswer": 1
+        },
+        {
+          "id": 2,
+          "text": "ما هي عاصمة الدولة الأموية؟",
+          "textEn": "What was the capital of the Umayyad Caliphate?",
+          "options": [
+            "بغداد",
+            "القاهرة",
+            "دمشق",
+            "قرطبة"
+          ],
+          "optionsEn": [
+            "Baghdad",
+            "Cairo",
+            "Damascus",
+            "Cordoba"
+          ],
+          "correctAnswer": 2
+        }
+      ]
+    }
+  ],
+  "progress": [],
+  "notifications": [
+    {
+      "id": "1",
+      "userId": "1",
+      "title": "مرحباً بك في المصطبة العلمية",
+      "titleEn": "Welcome to Al-Mastaba Al-Ilmiya",
+      "message": "نتمنى لك رحلة ممتعة في طلب العلم",
+      "messageEn": "We wish you an enjoyable journey in seeking knowledge",
+      "read": false,
+      "createdAt": "2024-01-15T10:00:00Z",
+      "type": "welcome"
+    }
+  ],
+  "logs": []
+}

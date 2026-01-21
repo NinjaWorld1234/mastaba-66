@@ -1,0 +1,24 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files and install production dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy pre-built frontend assets
+COPY dist ./dist
+
+# Copy backend files
+COPY server.cjs ./
+COPY server/ ./server/
+COPY db.json ./
+
+# Environment variables
+ENV PORT=5000
+ENV NODE_ENV=production
+# SECRET_KEY should ideally be passed at runtime, but for now we rely on the fallback or user-supplied env
+
+EXPOSE 5000
+
+CMD ["node", "server.cjs"]

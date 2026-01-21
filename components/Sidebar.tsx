@@ -1,0 +1,290 @@
+/**
+ * @fileoverview Sidebar navigation component with role-based menu items
+ * @module components/Sidebar
+ */
+
+import React, { memo, useCallback, useMemo } from 'react';
+import { LayoutDashboard, BookOpen, GraduationCap, Users, Settings, LogOut, Award, BarChart3, Mic2, User, Calendar, Bell, Heart, TrendingUp, Search, FolderOpen, Megaphone, ClipboardList, Activity, Database, LucideIcon } from 'lucide-react';
+import { UserRole } from '../types';
+import { useLanguage } from './LanguageContext';
+
+/**
+ * Sidebar component props
+ */
+interface SidebarProps {
+  /** Currently active tab ID */
+  activeTab: string;
+  /** Callback to change the active tab */
+  setActiveTab: (tab: string) => void;
+  /** Callback to preload route code */
+  onPreload?: (tabId: string) => void;
+  /** Callback when user logs out */
+  onLogout: () => void;
+  /** User's role (student or admin) */
+  role: UserRole;
+}
+
+/**
+ * Menu item interface
+ */
+interface MenuItem {
+  /** Unique identifier for the menu item */
+  id: string;
+  /** Lucide icon component */
+  icon: LucideIcon;
+  /** Display label for the menu item */
+  label: string;
+}
+
+/**
+ * Navigation item component for sidebar menu
+ */
+const NavItem = memo<{
+  item: MenuItem;
+  isActive: boolean;
+  onClick: () => void;
+  onHover?: () => void;
+  language: string;
+}>(({ item, isActive, onClick, onHover, language }) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  }, [onClick]);
+
+  return (
+    <button
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      onMouseEnter={onHover}
+      className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-xl transition-all duration-300 group relative overflow-hidden ${isActive
+        ? `bg-gradient-to-r ${language === 'ar' ? 'from-teal-800/90 to-transparent border-r-4' : 'from-transparent to-teal-800/90 border-l-4'} text-white border-gold-500 shadow-md`
+        : 'text-emerald-100/70 hover:bg-white/10 hover:text-white'
+        }`}
+      role="menuitem"
+      aria-current={isActive ? 'page' : undefined}
+      tabIndex={0}
+    >
+      {isActive && (
+        <div className="absolute inset-0 bg-gold-500/10 mix-blend-overlay" aria-hidden="true"></div>
+      )}
+      <item.icon
+        className={`w-5 h-5 relative z-10 transition-colors ${isActive ? 'text-gold-400' : 'text-emerald-200 group-hover:text-white'}`}
+        aria-hidden="true"
+      />
+      <span className={`font-medium relative z-10 ${isActive ? 'font-bold' : ''}`}>{item.label}</span>
+    </button>
+  );
+});
+NavItem.displayName = 'NavItem';
+
+/**
+ * Sidebar component - Main navigation for the application
+ * 
+ * Features:
+ * - Role-based menu items (student vs admin)
+ * - RTL/LTR support
+ * - Keyboard navigation
+ * - ARIA accessibility attributes
+ * 
+ * @param props - Sidebar props
+ * @returns Sidebar component
+ */
+const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPreload, onLogout, role }) => {
+  const { t, language } = useLanguage();
+
+  /** Student navigation menu items */
+  const studentItems: MenuItem[] = useMemo(() => [
+    { id: 'dashboard', icon: LayoutDashboard, label: t('sidebar.dashboard') },
+    { id: 'courses', icon: BookOpen, label: t('sidebar.myCourses') },
+    { id: 'library', icon: GraduationCap, label: t('sidebar.library') },
+    { id: 'certificates', icon: Award, label: t('sidebar.certificates') },
+    { id: 'community', icon: Users, label: t('sidebar.community') },
+    { id: 'profile', icon: User, label: t('sidebar.profile') },
+    { id: 'daily-tracking', icon: Calendar, label: t('sidebar.dailyTracking') },
+    { id: 'notifications', icon: Bell, label: t('sidebar.notifications') },
+    { id: 'favorites', icon: Heart, label: t('sidebar.favorites') },
+    { id: 'progress', icon: TrendingUp, label: t('sidebar.progress') },
+    { id: 'search', icon: Search, label: t('sidebar.search') },
+  ], [t]);
+
+  /** Admin navigation menu items */
+  const adminItems: MenuItem[] = useMemo(() => [
+    { id: 'dashboard', icon: LayoutDashboard, label: t('admin.dashboard') },
+    { id: 'students', icon: Users, label: t('admin.students') },
+    { id: 'audio-courses', icon: Mic2, label: t('admin.audioCourses') },
+    { id: 'reports', icon: BarChart3, label: t('admin.reports') },
+    { id: 'content', icon: FolderOpen, label: t('admin.contentManagement') },
+    { id: 'announcements', icon: Megaphone, label: t('admin.announcements') },
+    { id: 'quizzes', icon: ClipboardList, label: t('admin.quizManagement') },
+    { id: 'activity-log', icon: Activity, label: t('admin.activityLog') },
+    { id: 'certificates-admin', icon: Award, label: t('admin.certificatesAdmin') },
+    { id: 'backup', icon: Database, label: t('admin.backup') },
+  ], [t]);
+
+  /** Get menu items based on user role */
+  const menuItems = useMemo(() =>
+    role === 'admin' ? adminItems : studentItems,
+    [role, adminItems, studentItems]
+  );
+
+  /** Handle navigation item click */
+  const handleNavClick = useCallback((id: string) => {
+    setActiveTab(id);
+  }, [setActiveTab]);
+
+  /** Handle item hover for preloading */
+  const handleNavHover = useCallback((id: string) => {
+    if (onPreload) {
+      onPreload(id);
+    }
+  }, [onPreload]);
+
+  /** Handle settings click */
+  const handleSettingsClick = useCallback(() => {
+    setActiveTab('settings');
+  }, [setActiveTab]);
+
+  /** Handle logout click */
+  const handleLogoutClick = useCallback(() => {
+    onLogout();
+  }, [onLogout]);
+
+  /** Handle keyboard navigation for settings */
+  const handleSettingsKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleSettingsClick();
+    }
+  }, [handleSettingsClick]);
+
+  /** Handle keyboard navigation for logout */
+  const handleLogoutKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleLogoutClick();
+    }
+  }, [handleLogoutClick]);
+
+  return (
+    <aside
+      className="hidden md:flex flex-col w-72 h-full glass-panel border-l border-white/20 relative z-20 shadow-2xl overflow-hidden bg-black/30 backdrop-blur-md"
+      role="navigation"
+      aria-label={role === 'admin' ? t('admin.adminPanel') : t('sidebar.mastaba')}
+    >
+      {/* Pattern Overlay */}
+      <div className="islamic-bg absolute inset-0 opacity-30 pointer-events-none" aria-hidden="true"></div>
+
+      {/* Top Ornament */}
+      <div
+        className="absolute top-0 inset-x-0 h-32 opacity-20 pointer-events-none"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M100 20 C100 20 130 50 130 100 H70 C70 50 100 20 100 20 Z' fill='%23fbbf24'/%3E%3C/svg%3E")`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center top',
+          backgroundSize: '150%'
+        }}
+        aria-hidden="true"
+      ></div>
+
+      {/* Decorative Header */}
+      <header className="relative pt-10 pb-6 px-6 flex flex-col items-center justify-center border-b border-white/10 z-10">
+        <div className="relative z-10 w-full flex flex-col items-center">
+          {/* Logo Container */}
+          <div className="relative w-36 h-36 mb-5 group cursor-pointer">
+            {/* Outer Glow */}
+            <div className="absolute -inset-4 bg-gold-500/10 blur-xl rounded-full group-hover:bg-gold-500/20 transition-all duration-500 opacity-60" aria-hidden="true"></div>
+
+            {/* Main Square Frame */}
+            <div className="relative w-full h-full bg-gradient-to-br from-[#064e3b] via-[#022c22] to-[#064e3b] border border-gold-500/30 rounded-2xl flex items-center justify-center overflow-hidden shadow-2xl ring-1 ring-white/5 group-hover:border-gold-500/60 transition-colors duration-500">
+              {/* Inner Decorative Border */}
+              <div className="absolute inset-1.5 border border-gold-500/20 rounded-xl pointer-events-none" aria-hidden="true"></div>
+
+              {/* Corner Ornaments */}
+              <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-gold-400 rounded-tl-lg z-20" aria-hidden="true"></div>
+              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-gold-400 rounded-tr-lg z-20" aria-hidden="true"></div>
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-gold-400 rounded-bl-lg z-20" aria-hidden="true"></div>
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-gold-400 rounded-br-lg z-20" aria-hidden="true"></div>
+
+              {/* Mid-Point Accents */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gold-500 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.8)] z-20" aria-hidden="true"></div>
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 bg-gold-500 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.8)] z-20" aria-hidden="true"></div>
+              <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gold-500 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.8)] z-20" aria-hidden="true"></div>
+              <div className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gold-500 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.8)] z-20" aria-hidden="true"></div>
+
+              {/* Background Pattern */}
+              <div className="absolute inset-0 mashrabiya-pattern opacity-15" aria-hidden="true"></div>
+
+              {/* Logo Image */}
+              <img
+                src="https://github.com/NinjaWorld1234/Files/blob/main/Mastaba%20LOGO.png?raw=true"
+                alt={t('sidebar.mastaba')}
+                className="relative z-10 w-24 h-24 object-contain group-hover:scale-110 transition-transform duration-500 drop-shadow-2xl"
+                loading="lazy"
+              />
+            </div>
+          </div>
+
+          <h1 className="text-xl font-bold text-white tracking-wide text-center font-serif drop-shadow-md">
+            {role === 'admin' ? t('admin.adminPanel') : t('sidebar.mastaba')}
+          </h1>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="h-px w-8 bg-gradient-to-l from-transparent to-gold-500/50" aria-hidden="true"></div>
+            <p className="text-[10px] text-gold-300 font-medium tracking-widest uppercase shadow-black drop-shadow-sm">
+              {role === 'admin' ? t('admin.adminPanel') : t('sidebar.beacon')}
+            </p>
+            <div className="h-px w-8 bg-gradient-to-r from-transparent to-gold-500/50" aria-hidden="true"></div>
+          </div>
+        </div>
+      </header>
+
+      {/* Navigation Menu */}
+      <nav
+        className="flex-1 py-8 px-4 space-y-2 overflow-y-auto relative z-10"
+        role="menu"
+        aria-label="Main navigation"
+      >
+        {menuItems.map((item) => (
+          <NavItem
+            key={item.id}
+            item={item}
+            isActive={activeTab === item.id}
+            onClick={() => handleNavClick(item.id)}
+            onHover={() => handleNavHover(item.id)}
+            language={language}
+          />
+        ))}
+      </nav>
+
+      {/* Footer Actions */}
+      <footer className="p-6 border-t border-white/10 relative z-10 bg-black/20 backdrop-blur-sm">
+        <button
+          onClick={handleSettingsClick}
+          onKeyDown={handleSettingsKeyDown}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors mb-2 ${activeTab === 'settings' ? 'text-white bg-white/10 border border-white/5' : 'text-emerald-200/80 hover:text-white hover:bg-white/10'}`}
+          role="menuitem"
+          aria-current={activeTab === 'settings' ? 'page' : undefined}
+          aria-label={t('sidebar.settings')}
+        >
+          <Settings className="w-5 h-5" aria-hidden="true" />
+          <span>{t('sidebar.settings')}</span>
+        </button>
+        <button
+          onClick={handleLogoutClick}
+          onKeyDown={handleLogoutKeyDown}
+          className="w-full flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-100 hover:bg-red-900/20 rounded-xl transition-colors"
+          role="menuitem"
+          aria-label={t('sidebar.logout')}
+        >
+          <LogOut className="w-5 h-5" aria-hidden="true" />
+          <span>{t('sidebar.logout')}</span>
+        </button>
+      </footer>
+    </aside>
+  );
+});
+
+Sidebar.displayName = 'Sidebar';
+
+export default Sidebar;
