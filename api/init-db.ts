@@ -33,7 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const results = [];
 
         for (const user of usersToCreate) {
-            // 1. Create in Supabase Auth
+            let userId: string | undefined;
+
+            // 1. Try to Create in Supabase Auth
             const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email: user.email,
                 password: user.password,
@@ -43,17 +45,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             if (authError) {
                 if (authError.message.includes('already exists') || authError.message.includes('already registered')) {
-                    results.push(`${user.email}: Already exists in Auth.`);
+                    results.push(`${user.email}: Already exists in Auth. Fetching ID...`);
+
+                    // Get existing user ID
+                    const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+                    if (!listError) {
+                        const existingUser = listData.users.find(u => u.email === user.email);
+                        userId = existingUser?.id;
+                    }
                 } else {
                     results.push(`${user.email}: Auth error - ${authError.message}`);
                     continue;
                 }
             } else {
                 results.push(`${user.email}: Created successfully in Auth.`);
+                userId = authData?.user?.id;
             }
 
             // 2. Create/Sync in Public Profile
-            const userId = authData?.user?.id;
             if (userId) {
                 const { error: profileError } = await supabaseAdmin
                     .from('users')
@@ -69,8 +78,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     });
 
                 if (profileError) {
-                    results.push(`${user.email}: Profile sync error - ${profileError.message}`);
+                    results.push(`${user.email}: Profile sync error - ${profileError.message} (${profileError.code || 'no code'})`);
+                    if (profileError.message.includes('not found') || profileError.code === '42P01') {
+                        results.push(`CRITICAL: The 'users' table does not exist in your Supabase project. Please run the SQL in supabase_schema.sql first.`);
+                    }
+                } else {
+                    results.push(`${user.email}: Profile synced successfully.`);
                 }
+            } else {
+                results.push(`${user.email}: Could not retrieve user ID.`);
             }
         }
 
