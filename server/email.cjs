@@ -1,7 +1,13 @@
 const { Resend } = require('resend');
 
-// Initialize Resend with API key from environment
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend with API key from environment (optional)
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+
+// Log warning if no API key
+if (!RESEND_API_KEY) {
+  console.warn('[EMAIL] Resend API key not configured. Email sending will be simulated.');
+}
 
 /**
  * Generate a 6-digit OTP code
@@ -18,6 +24,12 @@ function generateOTP() {
  */
 async function sendVerificationEmail(email, name, otp) {
   try {
+    // If Resend is not configured, simulate sending
+    if (!resend) {
+      console.log(`[EMAIL SIMULATION] Would send OTP ${otp} to ${email}`);
+      return { success: true, data: { simulated: true, otp } };
+    }
+
     const { data, error } = await resend.emails.send({
       from: 'المصطبة العلمية <onboarding@resend.dev>',
       to: email,

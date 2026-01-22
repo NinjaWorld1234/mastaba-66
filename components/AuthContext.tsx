@@ -9,7 +9,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { api, getAuthToken } from '../services/api';
-import { supabase } from '../lib/supabase';
 import { User, SESSION_TIMEOUT_MS } from '../types';
 
 // ============================================================================
@@ -209,39 +208,58 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
      * Checks if stored token is valid and restores session
      */
     const checkSession = useCallback(async (): Promise<boolean> => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            logout();
+        const token = getAuthToken();
+        if (!token) {
+            const storedUser = api.getCurrentUser();
+            if (storedUser) {
+                setUser(storedUser);
+                return true;
+            }
             return false;
         }
 
-        const storedUser = api.getCurrentUser();
-        if (storedUser) {
-            setUser(storedUser);
-            return true;
+        try {
+            // Validate token with server
+            const response = await fetch('/api/check-session', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                logout();
+                return false;
+            }
+
+            const data = await response.json();
+            if (data.valid && data.user) {
+                const user: User = {
+                    ...data.user,
+                    access_token: token,
+                    nameEn: data.user.nameEn || data.user.name,
+                    joinDate: data.user.joinDate,
+                    emailVerified: !!data.user.emailVerified,
+                };
+                setUser(user);
+                localStorage.setItem('mastaba_currentUser', JSON.stringify(user));
+                return true;
+            }
+
+            // Fallback to stored user if session check fails but user exists
+            const storedUser = api.getCurrentUser();
+            if (storedUser) {
+                setUser(storedUser);
+                return true;
+            }
+
+            return false;
+        } catch {
+            // Network error - use stored user if available
+            const storedUser = api.getCurrentUser();
+            if (storedUser) {
+                setUser(storedUser);
+                return true;
+            }
+            return false;
         }
-
-        // If no stored user but session exists, fetch profile
-        const { data: profile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-
-        if (profile) {
-            const user: User = {
-                ...profile,
-                access_token: session.access_token,
-                nameEn: profile.name_en || profile.name,
-                joinDate: profile.join_date,
-                emailVerified: profile.email_verified,
-            };
-            setUser(user);
-            localStorage.setItem('mastaba_currentUser', JSON.stringify(user));
-            return true;
-        }
-
-        return false;
     }, [logout]);
 
     // Check for existing session on mount and validate expiration

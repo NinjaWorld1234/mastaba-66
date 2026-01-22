@@ -68,150 +68,162 @@ export const api = {
     // ========================================================================
 
     login: async (email: string, password: string): Promise<User | null> => {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        try {
+            // Use REST API for login (works with AWS SQLite backend)
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
 
-        if (error) {
-            console.error('Supabase login error:', error);
-            return null;
-        }
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('Login error:', errorData);
 
-        if (data.user) {
-            const { data: profile } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
+                // Check if email verification is required
+                if (errorData.needsVerification) {
+                    const error: any = new Error(errorData.errorAr || 'Email not verified');
+                    error.needsVerification = true;
+                    error.email = email;
+                    throw error;
+                }
 
-            if (profile) {
+                return null;
+            }
+
+            const data = await response.json();
+
+            if (data.accessToken && data.user) {
                 const user: User = {
-                    ...profile,
-                    access_token: data.session?.access_token,
-                    nameEn: profile.name_en || profile.name,
-                    joinDate: profile.join_date,
-                    emailVerified: profile.email_verified,
+                    ...data.user,
+                    access_token: data.accessToken,
+                    nameEn: data.user.nameEn || data.user.name,
+                    joinDate: data.user.joinDate,
+                    emailVerified: !!data.user.emailVerified,
                 };
                 localStorage.setItem(STORAGE_PREFIX + 'currentUser', JSON.stringify(user));
-                localStorage.setItem('authToken', user.access_token || '');
+                localStorage.setItem('authToken', data.accessToken);
                 return user;
             }
+            return null;
+        } catch (error: any) {
+            if (error.needsVerification) {
+                throw error;
+            }
+            console.error('Login error:', error);
+            return null;
         }
-        return null;
     },
 
     register: async (userData: any): Promise<{ user: User | null; error: any }> => {
-        const { data, error } = await supabase.auth.signUp({
-            email: userData.email,
-            password: userData.password,
-            options: {
-                data: {
-                    name: userData.name,
-                    name_en: userData.nameEn || userData.name,
-                }
+        try {
+            const response = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { user: null, error: data.error || data.errorAr || 'Registration failed' };
             }
-        });
 
-        if (error) return { user: null, error };
+            if (data.user) {
+                const user: User = {
+                    ...data.user,
+                    access_token: data.accessToken,
+                    nameEn: data.user.nameEn || data.user.name,
+                    joinDate: data.user.joinDate,
+                    emailVerified: !!data.user.emailVerified
+                };
 
-        if (data.user) {
-            // Profile is created via Trigger in Supabase (ideal) or manually here
-            // Let's ensure it exists
-            const profileData = {
-                id: data.user.id,
-                email: userData.email,
-                name: userData.name,
-                name_en: userData.nameEn || userData.name,
-                whatsapp: userData.whatsapp,
-                country: userData.country,
-                age: userData.age,
-                gender: userData.gender,
-                education_level: userData.educationLevel,
-                role: 'student',
-                status: 'active',
-                join_date: new Date().toISOString().split('T')[0],
-                points: 0,
-                level: 1,
-                streak: 0,
-                email_verified: false
-            };
+                // Store token for verification flow
+                if (data.accessToken) {
+                    localStorage.setItem('authToken', data.accessToken);
+                }
 
-            const { data: profile, error: pError } = await supabase
-                .from('users')
-                .upsert(profileData)
-                .select()
-                .single();
+                return { user, error: null };
+            }
 
-            if (pError) return { user: null, error: pError };
-
-            const user: User = {
-                ...profile,
-                access_token: data.session?.access_token,
-                nameEn: profile.name_en,
-                joinDate: profile.join_date,
-                emailVerified: profile.email_verified
-            };
-
-            return { user, error: null };
+            return { user: null, error: 'Registration failed' };
+        } catch (error: any) {
+            return { user: null, error: error.message || 'Registration failed' };
         }
-
-        return { user: null, error: 'User creation failed' };
     },
 
     verifyOtp: async (email: string, token: string): Promise<{ success: boolean; user: User | null; error: any }> => {
-        const { data, error } = await supabase.auth.verifyOtp({
-            email,
-            token,
-            type: 'signup'
-        });
+        try {
+            const response = await fetch('/api/verify-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, otp: token })
+            });
 
-        if (error) return { success: false, user: null, error };
+            const data = await response.json();
 
-        if (data.user) {
-            // Update email_verified status
-            await supabase.from('users').update({ email_verified: true }).eq('id', data.user.id);
+            if (!response.ok) {
+                return { success: false, user: null, error: data.errorAr || data.error || 'Verification failed' };
+            }
 
-            const { data: profile } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
-
-            if (profile) {
+            if (data.success && data.user) {
                 const user: User = {
-                    ...profile,
-                    access_token: data.session?.access_token,
-                    nameEn: profile.name_en,
-                    joinDate: profile.join_date,
+                    ...data.user,
+                    access_token: data.accessToken,
+                    nameEn: data.user.nameEn || data.user.name,
+                    joinDate: data.user.joinDate,
                     emailVerified: true
                 };
                 localStorage.setItem(STORAGE_PREFIX + 'currentUser', JSON.stringify(user));
-                localStorage.setItem('authToken', user.access_token || '');
+                localStorage.setItem('authToken', data.accessToken || '');
                 return { success: true, user, error: null };
             }
-        }
 
-        return { success: true, user: null, error: null };
+            return { success: true, user: null, error: null };
+        } catch (error: any) {
+            return { success: false, user: null, error: error.message || 'Verification failed' };
+        }
     },
 
     resendOtp: async (email: string): Promise<{ error: any }> => {
-        const { error } = await supabase.auth.resend({
-            type: 'signup',
-            email
-        });
-        return { error };
+        try {
+            const response = await fetch('/api/resend-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { error: data.errorAr || data.error || 'Failed to resend OTP' };
+            }
+
+            return { error: null };
+        } catch (error: any) {
+            return { error: error.message || 'Failed to resend OTP' };
+        }
     },
 
     getUsers: async (): Promise<User[]> => {
-        const { data, error } = await supabase.from('users').select('*');
-        if (error) return [];
-        return data.map(u => ({
-            ...u,
-            nameEn: u.name_en,
-            joinDate: u.join_date,
-            emailVerified: u.email_verified
-        }));
+        try {
+            const token = getAuthToken();
+            const response = await fetch('/api/users', {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+
+            if (!response.ok) return [];
+
+            const data = await response.json();
+            return data.map((u: any) => ({
+                ...u,
+                nameEn: u.nameEn || u.name_en,
+                joinDate: u.joinDate || u.join_date,
+                emailVerified: u.emailVerified || u.email_verified
+            }));
+        } catch {
+            return [];
+        }
     },
 
     updateUser: async (id: string, updates: Partial<User>): Promise<User | null> => {
@@ -352,7 +364,6 @@ export const api = {
     },
 
     logout: (): void => {
-        supabase.auth.signOut();
         localStorage.removeItem(STORAGE_PREFIX + 'currentUser');
         localStorage.removeItem('authToken');
     },
@@ -362,23 +373,25 @@ export const api = {
     // ========================================================================
 
     getCourses: async (): Promise<Course[]> => {
-        const { data, error } = await supabase
-            .from('courses')
-            .select('*')
-            .order('created_at', { ascending: false });
+        try {
+            const response = await fetch('/api/courses');
+            if (!response.ok) return [];
 
-        if (error) return [];
-        return data.map(c => ({
-            ...c,
-            titleEn: c.title_en,
-            instructorEn: c.instructor_en,
-            categoryEn: c.category_en,
-            durationEn: c.duration_en,
-            descriptionEn: c.description_en,
-            lessonsCount: c.lessons_count,
-            studentsCount: c.students_count,
-            videoUrl: c.video_url
-        }));
+            const data = await response.json();
+            return data.map((c: any) => ({
+                ...c,
+                titleEn: c.titleEn || c.title_en,
+                instructorEn: c.instructorEn || c.instructor_en,
+                categoryEn: c.categoryEn || c.category_en,
+                durationEn: c.durationEn || c.duration_en,
+                descriptionEn: c.descriptionEn || c.description_en,
+                lessonsCount: c.lessonsCount || c.lessons_count,
+                studentsCount: c.studentsCount || c.students_count,
+                videoUrl: c.videoUrl || c.video_url
+            }));
+        } catch {
+            return [];
+        }
     },
 
     addCourse: async (course: Course): Promise<void> => {
