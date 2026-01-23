@@ -40,6 +40,21 @@ app.use(cors());
 app.use(express.json());
 app.use(express.raw({ type: 'application/octet-stream', limit: '100mb' }));
 
+// Request Logger (Helpful for Hostinger Debugging)
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
+
+// Health check endpoint (for quick verification)
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'UP',
+        timestamp: new Date().toISOString(),
+        db: db ? 'Initialised' : 'Not Initialised'
+    });
+});
+
 
 // ============================================================================
 // Authentication Middleware

@@ -1,6 +1,13 @@
+# Disable DirectoryIndex to prevent Apache from serving root index.html
+DirectoryIndex disabled
+
 RewriteEngine On
 RewriteBase /
-RewriteRule ^index\.html$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /server.cjs [L]
+
+# If the request is for a real file or directory that exists, serve it
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Otherwise, send everything to the Node.js entry point
+RewriteRule ^ server.cjs [L]
