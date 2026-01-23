@@ -1489,6 +1489,6 @@ app.use((req, res) => {
 // Start Server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`- Database: SQLite`);
+    console.log(`- Database: JSON File (Compatibility Mode)`);
     console.log(`- Base URL: http://localhost:${PORT}`);
 });
