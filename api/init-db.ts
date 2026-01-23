@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     // Get existing user ID
                     const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
                     if (!listError) {
-                        const existingUser = listData.users.find(u => u.email === user.email);
+                        const existingUser = (listData.users as any[]).find(u => u.email === user.email);
                         userId = existingUser?.id;
                     }
                 } else {
