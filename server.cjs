@@ -13,8 +13,7 @@ const { S3Client, ListObjectsV2Command, PutObjectCommand } = require('@aws-sdk/c
 const PORT = process.env.PORT || 5000;
 const SECRET_KEY = process.env.SECRET_KEY;
 if (!SECRET_KEY) {
-    console.error('FATAL: SECRET_KEY environment variable is not set!');
-    process.exit(1);
+    console.warn('WARNING: SECRET_KEY environment variable is not set! Authentication will fail.');
 }
 
 // Initialize Database
