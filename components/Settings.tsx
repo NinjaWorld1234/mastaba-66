@@ -8,6 +8,7 @@ import { User, Bell, Lock, Globe, Moon, Save } from 'lucide-react';
 import { useLanguage } from './LanguageContext';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import { useToast } from './Toast';
 import { sanitizeHTML, sanitizeEmail } from '../utils/sanitize';
 
 /**
@@ -39,8 +40,8 @@ const SettingsNavItem = memo<{
          onClick={onClick}
          onKeyDown={handleKeyDown}
          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${isActive
-               ? 'bg-emerald-500/10 text-emerald-400 font-medium border-r-2 border-emerald-500'
-               : 'text-gray-400 hover:bg-white/5 hover:text-white'
+            ? 'bg-emerald-500/10 text-emerald-400 font-medium border-r-2 border-emerald-500'
+            : 'text-gray-400 hover:bg-white/5 hover:text-white'
             }`}
          role="tab"
          aria-selected={isActive}
@@ -110,8 +111,8 @@ const ToggleSwitch = memo<{
    >
       <div
          className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isOn
-               ? (isRtl ? 'left-1' : 'right-1')
-               : (isRtl ? 'right-1' : 'left-1')
+            ? (isRtl ? 'left-1' : 'right-1')
+            : (isRtl ? 'right-1' : 'left-1')
             }`}
          aria-hidden="true"
       ></div>
@@ -135,6 +136,7 @@ const Settings: React.FC = memo(() => {
    const { t, language, setLanguage } = useLanguage();
    const { user, updateUser } = useAuth();
    const { theme, toggleTheme } = useTheme();
+   const toast = useToast();
 
    const isDark = useMemo(() => theme === 'night', [theme]);
    const isRtl = useMemo(() => language === 'ar', [language]);
@@ -174,10 +176,8 @@ const Settings: React.FC = memo(() => {
          email: sanitizedEmail
       });
 
-      setTimeout(() => {
-         alert('تم حفظ الإعدادات بنجاح! ✅');
-      }, 500);
-   }, [firstName, lastName, email, updateUser]);
+      toast.success('تم حفظ الإعدادات بنجاح! ✅');
+   }, [firstName, lastName, email, updateUser, toast]);
 
    /** Handle language toggle */
    const handleLanguageToggle = useCallback(() => {

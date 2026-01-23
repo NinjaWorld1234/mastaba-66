@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Circle, ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react';
-import { QUIZ_QUESTIONS } from '../constants';
+import { CheckCircle2, Circle, ArrowLeft, ArrowRight, RefreshCw, X } from 'lucide-react';
+import { Quiz as QuizType, Question } from '../types';
 import { useLanguage } from './LanguageContext';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
 
-const Quiz: React.FC = () => {
+interface QuizProps {
+  quiz: QuizType;
+  onSuccess: () => void;
+  onClose: () => void;
+}
+
+const Quiz: React.FC<QuizProps> = ({ quiz, onSuccess, onClose }) => {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -14,8 +20,9 @@ const Quiz: React.FC = () => {
   const [score, setScore] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
 
-  const question = QUIZ_QUESTIONS[currentQuestionIdx];
-  const totalQuestions = QUIZ_QUESTIONS.length;
+  const question = quiz.questions[currentQuestionIdx];
+  const totalQuestions = quiz.questions.length;
+  const passingScore = quiz.passingScore || 70;
 
   const handleNext = () => {
     let newScore = score;
@@ -32,15 +39,21 @@ const Quiz: React.FC = () => {
     }
   };
 
-  const finishQuiz = (finalScore: number) => {
+  const finishQuiz = async (finalScore: number) => {
     setIsSaving(true);
-    // Simulate API delay
-    setTimeout(() => {
-      // Use a dummy quiz ID 'quiz-1' for now
-      api.quizResults.save('quiz-1', finalScore, totalQuestions);
+    try {
+      await api.quizResults.save(quiz.id, finalScore, totalQuestions);
       setIsSubmitted(true);
+
+      const percentage = (finalScore / totalQuestions) * 100;
+      if (percentage >= passingScore) {
+        onSuccess();
+      }
+    } catch (error) {
+      console.error('Quiz save error:', error);
+    } finally {
       setIsSaving(false);
-    }, 1000);
+    }
   };
 
   const handleDownloadCertificate = () => {
@@ -64,8 +77,8 @@ const Quiz: React.FC = () => {
             <button onClick={() => { setIsSubmitted(false); setCurrentQuestionIdx(0); setScore(0); setSelectedOption(null); }} className="flex-1 py-3 rounded-xl border border-white/20 hover:bg-white/5 transition-colors">
               {t('quiz.retry')}
             </button>
-            <button onClick={handleDownloadCertificate} className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/20 transition-colors">
-              {t('quiz.downloadCertificate')}
+            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-600 hover:bg-gray-500 text-white font-bold transition-colors">
+              إغلاق
             </button>
           </div>
         </div>

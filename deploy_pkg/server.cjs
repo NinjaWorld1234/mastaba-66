@@ -330,25 +330,6 @@ app.post('/api/resend-otp', async (req, res) => {
     }
 });
 
-// Check Session / Validate Token
-app.get('/api/check-session', authenticateToken, (req, res) => {
-    try {
-        const user = db.prepare(`
-            SELECT id, email, name, nameEn, role, points, level, avatar, 
-                   whatsapp, country, age, gender, educationLevel, emailVerified, joinDate
-            FROM users WHERE id = ?
-        `).get(req.user.id);
-
-        if (user) {
-            res.json({ valid: true, user });
-        } else {
-            res.status(404).json({ valid: false, error: 'User not found' });
-        }
-    } catch (e) {
-        console.error('Check session error:', e);
-        res.status(500).json({ valid: false, error: 'Internal server error' });
-    }
-});
 
 // Get Current User (Protected)
 app.get('/api/me', authenticateToken, (req, res) => {

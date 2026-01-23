@@ -9,28 +9,44 @@ const AdminBackupSettings: React.FC = () => {
         { id: 2, name: 'نسخة تلقائية', date: new Date(Date.now() - 86400000).toLocaleDateString('en-CA') + ' 03:00', size: '1.8 MB', status: 'success', type: 'auto' },
     ]);
 
-    const handleCreateBackup = () => {
-        const backupData = api.createBackup();
-        const blob = new Blob([backupData], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `mastaba-backup-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    const handleCreateBackup = async () => {
+        try {
+            await api.downloadBackup();
 
-        // Mock adding to list
-        const newBackup = {
-            id: Date.now(),
-            name: 'نسخة يدوية جديدة',
-            date: new Date().toLocaleString('en-CA'),
-            size: (blob.size / 1024).toFixed(2) + ' KB',
-            status: 'success',
-            type: 'manual'
-        };
-        setBackups([newBackup, ...backups]);
+            // Add visual feedback
+            const newBackup = {
+                id: Date.now(),
+                name: 'نسخة محلية (Database)',
+                date: new Date().toLocaleString('en-CA'),
+                size: 'Unknown',
+                status: 'success',
+                type: 'manual'
+            };
+            setBackups([newBackup, ...backups]);
+            alert('تم تحميل النسخة الاحتياطية بنجاح');
+        } catch (e) {
+            alert('فشل إنشاء النسخة الاحتياطية');
+            console.error(e);
+        }
+    };
+
+    const handleCloudBackup = async () => {
+        try {
+            const res = await api.uploadCloudBackup();
+            alert(`تم الرفع للسحابة بنجاح! الملف: ${res.key}`);
+            const newBackup = {
+                id: Date.now(),
+                name: 'نسخة سحابية (S3)',
+                date: new Date().toLocaleString('en-CA'),
+                size: (res.size / 1024 / 1024).toFixed(2) + ' MB',
+                status: 'success',
+                type: 'auto'
+            };
+            setBackups([newBackup, ...backups]);
+        } catch (e) {
+            alert('فشل الرفع للسحابة. تأكد من إعدادات S3/R2.');
+            console.error(e);
+        }
     };
 
     const handleRestoreClick = () => {
@@ -39,25 +55,22 @@ const AdminBackupSettings: React.FC = () => {
         }
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const content = event.target?.result as string;
-            if (content) {
-                try {
-                    api.restoreBackup(content);
-                    alert('تم استعادة النسخة الاحتياطية بنجاح! سيتم إعادة تحميل الصفحة.');
-                    window.location.reload();
-                } catch (error) {
-                    alert('فشل استعادة النسخة الاحتياطية: ملف غير صالح');
-                    console.error(error);
-                }
+        if (confirm('هل أنت متأكد من استعادة هذه النسخة؟ سيتم فقدان التغييرات غير المحفوظة.')) {
+            try {
+                await api.restoreBackup(file);
+                alert('تم استعادة النسخة الاحتياطية بنجاح! سيتم إعادة تحميل الصفحة.');
+                window.location.reload();
+            } catch (error) {
+                alert('فشل استعادة النسخة الاحتياطية');
+                console.error(error);
             }
-        };
-        reader.readAsText(file);
+        }
+        // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const stats = [
@@ -92,7 +105,13 @@ const AdminBackupSettings: React.FC = () => {
                         onClick={handleCreateBackup}
                         className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold hover:opacity-90 flex items-center gap-2"
                     >
-                        <Save className="w-5 h-5" /><span>نسخ الآن</span>
+                        <Save className="w-5 h-5" /><span>تحميل محلي</span>
+                    </button>
+                    <button
+                        onClick={handleCloudBackup}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold hover:opacity-90 flex items-center gap-2"
+                    >
+                        <Cloud className="w-5 h-5" /><span>رفع سحابي</span>
                     </button>
                 </div>
             </div>

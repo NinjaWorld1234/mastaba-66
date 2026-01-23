@@ -118,7 +118,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
      * Handles session expiration - logs out user
      */
     const handleSessionExpiration = useCallback((): void => {
-        console.log('Session expired due to inactivity');
+        // Session expired due to inactivity - logout user
         api.logout();
         setUser(null);
         localStorage.removeItem(LAST_ACTIVITY_KEY);
@@ -169,13 +169,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
             setIsLoading(false);
             return false;
-        } catch (error: any) {
+        } catch (error: unknown) {
             setIsLoading(false);
-            if (error.needsVerification) {
+            const authError = error as { needsVerification?: boolean };
+            if (authError.needsVerification) {
                 // Re-throw to be caught by the component
                 throw error;
             }
-            console.error('Login error:', error);
             return false;
         }
     }, [updateLastActivity]);
@@ -206,61 +206,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     /**
      * Checks if stored token is valid and restores session
+     * Uses localStorage for session persistence (no backend call)
      */
     const checkSession = useCallback(async (): Promise<boolean> => {
-        const token = getAuthToken();
-        if (!token) {
-            const storedUser = api.getCurrentUser();
-            if (storedUser) {
-                setUser(storedUser);
-                return true;
-            }
-            return false;
+        // Check for stored user in localStorage
+        const storedUser = api.getCurrentUser();
+        if (storedUser) {
+            setUser(storedUser);
+            updateLastActivity();
+            return true;
         }
-
-        try {
-            // Validate token with server
-            const response = await fetch('/api/check-session', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                logout();
-                return false;
-            }
-
-            const data = await response.json();
-            if (data.valid && data.user) {
-                const user: User = {
-                    ...data.user,
-                    access_token: token,
-                    nameEn: data.user.nameEn || data.user.name,
-                    joinDate: data.user.joinDate,
-                    emailVerified: !!data.user.emailVerified,
-                };
-                setUser(user);
-                localStorage.setItem('mastaba_currentUser', JSON.stringify(user));
-                return true;
-            }
-
-            // Fallback to stored user if session check fails but user exists
-            const storedUser = api.getCurrentUser();
-            if (storedUser) {
-                setUser(storedUser);
-                return true;
-            }
-
-            return false;
-        } catch {
-            // Network error - use stored user if available
-            const storedUser = api.getCurrentUser();
-            if (storedUser) {
-                setUser(storedUser);
-                return true;
-            }
-            return false;
-        }
-    }, [logout]);
+        return false;
+    }, [updateLastActivity]);
 
     // Check for existing session on mount and validate expiration
     useEffect(() => {

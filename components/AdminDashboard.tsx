@@ -147,6 +147,47 @@ ActivityItemCard.displayName = 'ActivityItemCard';
  * @returns AdminDashboard component
  */
 const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) => {
+   /** Dynamic stats from API */
+   const [stats, setStats] = React.useState({
+      totalStudents: 0,
+      activeCourses: 0,
+      completionRate: 0,
+      isLoading: true
+   });
+
+   /** Fetch real statistics on mount */
+   React.useEffect(() => {
+      const fetchStats = async () => {
+         try {
+            const [users, courses] = await Promise.all([
+               api.getUsers(),
+               api.getCourses()
+            ]);
+
+            const totalStudents = Array.isArray(users) ? users.filter(u => u.role === 'student').length : 0;
+            const activeCourses = Array.isArray(courses) ? courses.filter(c => c.status === 'published').length : 0;
+
+            // Calculate completion rate based on course progress
+            const studentsWithProgress = Array.isArray(users) ? users.filter(u => u.role === 'student') : [];
+            const avgCompletion = studentsWithProgress.length > 0
+               ? Math.round(studentsWithProgress.reduce((acc, u) => acc + (u.level || 1) * 10, 0) / studentsWithProgress.length)
+               : 0;
+
+            setStats({
+               totalStudents,
+               activeCourses,
+               completionRate: Math.min(avgCompletion, 100),
+               isLoading: false
+            });
+         } catch (error) {
+            console.error('Failed to fetch stats:', error);
+            setStats(prev => ({ ...prev, isLoading: false }));
+         }
+      };
+
+      fetchStats();
+   }, []);
+
    /** Chart data for weekly engagement */
    const chartData = useMemo(() => [
       { name: 'Week 1', hours: 400 },
@@ -176,9 +217,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) =>
             coursesCount: Array.isArray(courses) ? courses.length : 0,
             recentActivity: RECENT_ACTIVITY,
             stats: {
-               completionRate: '78%',
-               activeCourses: 45,
-               totalStudents: 1240
+               completionRate: `${stats.completionRate}%`,
+               activeCourses: stats.activeCourses,
+               totalStudents: stats.totalStudents
             }
          };
 
@@ -194,7 +235,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) =>
       } catch (error) {
          console.error("Failed to export summary", error);
       }
-   }, []);
+   }, [stats]);
 
    /** Tooltip style for chart */
    const tooltipStyle = useMemo(() => ({
@@ -237,11 +278,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) =>
             </div>
          </header>
 
+
          {/* Stats Cards */}
          <section className="grid grid-cols-1 md:grid-cols-3 gap-5" aria-label="إحصائيات سريعة">
             <StatCard
                label="نسبة الإكمال"
-               value="78%"
+               value={stats.isLoading ? '...' : `${stats.completionRate}%`}
                icon={TrendingUp}
                color="orange"
                trend="+5.6%"
@@ -250,7 +292,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) =>
             />
             <StatCard
                label="الدورات النشطة"
-               value="45"
+               value={stats.isLoading ? '...' : stats.activeCourses.toString()}
                icon={Mic2}
                color="blue"
                trend="+2"
@@ -259,7 +301,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) =>
             />
             <StatCard
                label="إجمالي الطلاب"
-               value="1,240"
+               value={stats.isLoading ? '...' : stats.totalStudents.toLocaleString()}
                icon={Users}
                color="emerald"
                trend="+12%"

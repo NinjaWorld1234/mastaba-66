@@ -8,26 +8,21 @@ import { MessageSquare, Heart, Share2, MoreHorizontal, PenSquare } from 'lucide-
 import { COMMUNITY_POSTS } from '../constants';
 import { useLanguage } from './LanguageContext';
 import { sanitizeHTML } from '../utils/sanitize';
+import { Post } from '../types';
 
 /**
- * Post interface for community posts
+ * Post card props
  */
-interface CommunityPost {
-   id: number;
-   author: string;
-   authorAvatar: string;
-   time: string;
-   content: string;
-   likes: number;
-   comments: number;
-   tags: string[];
+interface PostCardProps {
+   post: Post;
+   t: (key: string) => string;
 }
 
 /**
  * Post card props
  */
 interface PostCardProps {
-   post: CommunityPost;
+   post: Post;
    t: (key: string) => string;
 }
 
@@ -36,23 +31,19 @@ interface PostCardProps {
  */
 const PostCard = memo<PostCardProps>(({ post, t }) => {
    const handleLike = useCallback(() => {
-      // Would dispatch to state management in production
-      console.log('Liked post:', post.id);
+      // TODO: Dispatch to state management
    }, [post.id]);
 
    const handleComment = useCallback(() => {
-      // Would open comment dialog in production
-      console.log('Comment on post:', post.id);
+      // TODO: Open comment dialog
    }, [post.id]);
 
    const handleShare = useCallback(() => {
-      // Would open share dialog in production
-      console.log('Share post:', post.id);
+      // TODO: Open share dialog
    }, [post.id]);
 
    const handleMore = useCallback(() => {
-      // Would open options menu in production
-      console.log('More options for post:', post.id);
+      // TODO: Open options menu
    }, [post.id]);
 
    return (
@@ -152,7 +143,7 @@ const TrendingTopics = memo<{ t: (key: string) => string }>(({ t }) => {
                   onKeyDown={(e) => {
                      if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        console.log('Navigate to topic:', topic);
+                        // TODO: Navigate to topic page
                      }
                   }}
                >
@@ -171,8 +162,7 @@ TrendingTopics.displayName = 'TrendingTopics';
  */
 const CommunityRules = memo<{ t: (key: string) => string }>(({ t }) => {
    const handleReadRules = useCallback(() => {
-      // Would navigate to full rules page in production
-      console.log('Read community rules');
+      // TODO: Navigate to full rules page
    }, []);
 
    return (
@@ -207,7 +197,7 @@ CommunityRules.displayName = 'CommunityRules';
  */
 const Community: React.FC = memo(() => {
    const { t } = useLanguage();
-   const [posts, setPosts] = useState<CommunityPost[]>(COMMUNITY_POSTS as CommunityPost[]);
+   const [posts, setPosts] = useState<Post[]>(COMMUNITY_POSTS);
 
    /** Handle creating a new post */
    const handleNewPost = useCallback(() => {
@@ -215,8 +205,8 @@ const Community: React.FC = memo(() => {
       if (content) {
          // Sanitize user input to prevent XSS
          const sanitizedContent = sanitizeHTML(content);
-         const newPost: CommunityPost = {
-            id: posts.length + 1,
+         const newPost: Post = {
+            id: `post-${Date.now()}`,
             author: 'أحمد محمد', // Current User
             authorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
             time: 'الآن',
@@ -227,7 +217,7 @@ const Community: React.FC = memo(() => {
          };
          setPosts(prevPosts => [newPost, ...prevPosts]);
       }
-   }, [posts.length, t]);
+   }, [t]);
 
    return (
       <div className="animate-fade-in max-w-5xl mx-auto" role="main" aria-label={t('community.title')}>

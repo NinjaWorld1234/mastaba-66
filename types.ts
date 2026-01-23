@@ -461,3 +461,22 @@ export interface BackupRecord {
   /** Type of backup */
   type: BackupType;
 }
+
+// ============================================================================
+// Messaging
+// ============================================================================
+
+export interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  read: boolean | number;
+  timestamp: string;
+  is_from_support?: number;
+  otherUser?: {
+    name: string;
+    avatar: string;
+    role: string;
+  };
+}

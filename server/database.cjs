@@ -161,9 +161,51 @@ function initDatabase() {
     )
   `);
 
+  // Announcements Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      type TEXT DEFAULT 'info',
+      priority TEXT DEFAULT 'normal',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Quiz Results Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quiz_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT NOT NULL,
+      quizId TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      total INTEGER NOT NULL,
+      percentage INTEGER NOT NULL,
+      completedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(userId) REFERENCES users(id),
+      FOREIGN KEY(quizId) REFERENCES quizzes(id)
+    )
+  `);
+
+  // Activity Logs Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS system_activity_logs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      userId TEXT,
+      userName TEXT,
+      action TEXT NOT NULL,
+      timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+      details TEXT -- JSON string
+    )
+  `);
+
+
   // Community Posts Table
   db.exec(`
-    CREATE TABLE IF NOT EXISTS community_posts (
+    CREATE TABLE IF NOT EXISTS community_posts(
       id TEXT PRIMARY KEY,
       userId TEXT,
       author TEXT NOT NULL,
@@ -172,8 +214,23 @@ function initDatabase() {
       content TEXT NOT NULL,
       likes INTEGER DEFAULT 0,
       comments INTEGER DEFAULT 0,
-      tags TEXT, -- JSON string
+      tags TEXT, --JSON string
       createdAt TEXT
+    )
+    `);
+
+  // Messages Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      senderId TEXT NOT NULL,
+      receiverId TEXT NOT NULL,
+      content TEXT NOT NULL,
+      read INTEGER DEFAULT 0,
+      timestamp TEXT NOT NULL,
+      is_from_support INTEGER DEFAULT 0, 
+      FOREIGN KEY(senderId) REFERENCES users(id),
+      FOREIGN KEY(receiverId) REFERENCES users(id)
     )
   `);
 
@@ -199,9 +256,9 @@ function initDatabase() {
 function seedLibrary() {
   console.log('Seeding library resources...');
   const insert = db.prepare(`
-    INSERT INTO library_resources (id, title, author, type, size, image, url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
+    INSERT INTO library_resources(id, title, author, type, size, image, url)
+  VALUES(?, ?, ?, ?, ?, ?, ?)
+    `);
 
   const resources = [
     ['lib_1', 'ملخص فقه الطهارة', 'الشيخ أحمد', 'pdf', '2.5 MB', 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=300&h=200&fit=crop', '#'],
@@ -219,9 +276,9 @@ function seedLibrary() {
 function seedCommunity() {
   console.log('Seeding community posts...');
   const insert = db.prepare(`
-    INSERT INTO community_posts (id, userId, author, authorAvatar, time, content, likes, comments, tags, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+    INSERT INTO community_posts(id, userId, author, authorAvatar, time, content, likes, comments, tags, createdAt)
+  VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
   const posts = [
     ['post_1', '1', 'عمر فاروق', 'https://ui-avatars.com/api/?name=Omar+F&background=0D8ABC&color=fff&size=50', 'منذ ساعتين', 'السلام عليكم، هل يوجد ملخص جيد لدورة فقه الصلاة؟ أحتاجه للمراجعة قبل الاختبار.', 15, 4, JSON.stringify(['فقه', 'مساعدة']), new Date().toISOString()],
@@ -242,8 +299,8 @@ function seedDatabase() {
 
       // Seed Users
       const insertUser = db.prepare(`
-        INSERT INTO users (id, email, password, name, nameEn, role, avatar, points, level, streak, joinDate, emailVerified)
-        VALUES (@id, @email, @password, @name, @nameEn, @role, @avatar, @points, @level, @streak, @joinDate, @emailVerified)
+        INSERT INTO users(id, email, password, name, nameEn, role, avatar, points, level, streak, joinDate, emailVerified)
+  VALUES(@id, @email, @password, @name, @nameEn, @role, @avatar, @points, @level, @streak, @joinDate, @emailVerified)
       `);
 
       const insertManyUsers = db.transaction((users) => {
@@ -257,7 +314,7 @@ function seedDatabase() {
           try {
             insertUser.run({
               id: user.id || Date.now().toString(),
-              email: user.email || `user_${Date.now()}@example.com`,
+              email: user.email || `user_${Date.now()} @example.com`,
               password: hashedPassword,
               name: user.name || 'Unknown User',
               nameEn: user.nameEn || user.name || null,
@@ -279,9 +336,9 @@ function seedDatabase() {
 
       // Seed Courses
       const insertCourse = db.prepare(`
-        INSERT INTO courses (id, title, titleEn, instructor, instructorEn, category, categoryEn, duration, durationEn, thumbnail, description, descriptionEn, lessonsCount, studentsCount, videoUrl)
-        VALUES (@id, @title, @titleEn, @instructor, @instructorEn, @category, @categoryEn, @duration, @durationEn, @thumbnail, @description, @descriptionEn, @lessonsCount, @studentsCount, @videoUrl)
-      `);
+        INSERT INTO courses(id, title, titleEn, instructor, instructorEn, category, categoryEn, duration, durationEn, thumbnail, description, descriptionEn, lessonsCount, studentsCount, videoUrl)
+  VALUES(@id, @title, @titleEn, @instructor, @instructorEn, @category, @categoryEn, @duration, @durationEn, @thumbnail, @description, @descriptionEn, @lessonsCount, @studentsCount, @videoUrl)
+    `);
 
       const insertManyCourses = db.transaction((courses) => {
         for (const course of courses) {

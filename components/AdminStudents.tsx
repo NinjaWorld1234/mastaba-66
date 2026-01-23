@@ -4,12 +4,19 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { Users, Search, Filter, Mail, Calendar, UserCheck, UserX, GraduationCap, X, Check, LucideIcon } from 'lucide-react';
+import { Users, Search, Filter, Mail, Calendar, UserCheck, UserX, GraduationCap, X, Check, LucideIcon, Edit, Eye, MessageSquare } from 'lucide-react';
 import { api } from '../services/api';
 import { User } from '../types';
 import { sanitizeHTML, sanitizeEmail } from '../utils/sanitize';
 import { usePagination } from '../hooks/usePagination';
 import { useDebounce } from '../hooks/useDebounce';
+import EditStudentModal from './EditStudentModal';
+import StudentDetailsModal from './StudentDetailsModal';
+
+interface AdminStudentsProps {
+    setActiveTab?: (tab: string) => void;
+    onOpenChat?: (userId: string) => void;
+}
 
 /**
  * New student form data interface
@@ -55,17 +62,18 @@ StatCard.displayName = 'StatCard';
 const StudentRow = memo<{
     student: User;
     onDelete: (id: string) => void;
-    onEmail: (email: string) => void;
-}>(({ student, onDelete, onEmail }) => {
+    onEdit: (student: User) => void;
+    onView: (id: string) => void;
+    onMessage: (student: User) => void;
+}>(({ student, onDelete, onEdit, onView, onMessage }) => {
     const handleDelete = useCallback(() => {
         if (window.confirm('هل أنت متأكد من حذف هذا الطالب؟')) {
             onDelete(student.id);
         }
     }, [student.id, onDelete]);
 
-    const handleEmail = useCallback(() => {
-        onEmail(student.email);
-    }, [student.email, onEmail]);
+
+    // Removed handleEmail as it's replaced by onMessage
 
     const statusLabel = useMemo(() => {
         switch (student.status) {
@@ -117,18 +125,32 @@ const StudentRow = memo<{
             <td className="py-4 px-6">
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={handleEmail}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                        aria-label={`إرسال بريد إلى ${student.name}`}
+                        onClick={() => onView(student.id)}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-emerald-400 transition-colors"
+                        title="عرض الملف"
                     >
-                        <Mail className="w-4 h-4" aria-hidden="true" />
+                        <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={() => onEdit(student)}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-blue-400 transition-colors"
+                        title="تعديل"
+                    >
+                        <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={() => onMessage(student)}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
+                        title="مراسلة"
+                    >
+                        <MessageSquare className="w-4 h-4" />
                     </button>
                     <button
                         onClick={handleDelete}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                        aria-label={`حذف ${student.name}`}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-red-400 transition-colors"
+                        title="حذف"
                     >
-                        <UserX className="w-4 h-4 text-red-400" aria-hidden="true" />
+                        <UserX className="w-4 h-4" />
                     </button>
                 </div>
             </td>
@@ -259,10 +281,19 @@ AddStudentModal.displayName = 'AddStudentModal';
  * 
  * @returns AdminStudents component
  */
-const AdminStudents: React.FC = memo(() => {
+const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpenChat }) => {
     const [students, setStudents] = useState<User[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    // Filter State
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+    // New State for Modals
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+    const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
+    const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
     // Debounce search for performance
     const debouncedSearch = useDebounce(searchTerm, 300);
@@ -283,14 +314,18 @@ const AdminStudents: React.FC = memo(() => {
         loadStudents();
     }, [loadStudents]);
 
-    /** Filter students based on search term */
+    /** Filter students based on search term and filters */
     const filteredStudents = useMemo(() => {
         const term = debouncedSearch.toLowerCase();
-        return students.filter(student =>
-            (student as User).name.toLowerCase().includes(term) ||
-            (student as User).email.toLowerCase().includes(term)
-        );
-    }, [students, debouncedSearch]);
+        return students.filter(student => {
+            const matchesSearch = (student as User).name.toLowerCase().includes(term) ||
+                (student as User).email.toLowerCase().includes(term);
+
+            const matchesStatus = statusFilter === 'all' || student.status === statusFilter;
+
+            return matchesSearch && matchesStatus;
+        });
+    }, [students, debouncedSearch, statusFilter]);
 
     /** Use pagination hook */
     const { paginatedItems, currentPage, totalPages, nextPage, prevPage } = usePagination(filteredStudents, { itemsPerPage: 10 });
@@ -323,6 +358,48 @@ const AdminStudents: React.FC = memo(() => {
         await api.deleteUser(id);
         loadStudents();
     }, [loadStudents]);
+
+    /** Handle update student */
+    const handleUpdateStudent = useCallback(async (id: string, updates: Partial<User>) => {
+        await api.updateUser(id, updates);
+        setEditModalOpen(false);
+        loadStudents();
+    }, [loadStudents]);
+
+    /** Open Edit Modal */
+    const openEditModal = useCallback((student: User) => {
+        setSelectedStudent(student);
+        setEditModalOpen(true);
+    }, []);
+
+    /** Open Details Modal */
+    const openDetailsModal = useCallback((id: string) => {
+        setSelectedStudentId(id);
+        setDetailsModalOpen(true);
+    }, []);
+
+    /** Handle Message */
+    const handleMessage = useCallback((student: User) => {
+        if (onOpenChat) {
+            onOpenChat(student.id);
+        } else if (setActiveTab) {
+            // Fallback if only setActiveTab is provided (legacy)
+            setActiveTab('messages');
+        } else {
+            console.warn('onOpenChat not provided to AdminStudents');
+        }
+    }, [onOpenChat, setActiveTab]);
+
+    const handleMessageFromDetails = useCallback((studentId: string) => {
+        if (onOpenChat) {
+            onOpenChat(studentId);
+            setDetailsModalOpen(false);
+        } else if (setActiveTab) {
+            setActiveTab('messages');
+            setDetailsModalOpen(false);
+        }
+    }, [onOpenChat, setActiveTab]);
+
 
     /** Handle email student */
     const handleEmailStudent = useCallback((email: string) => {
@@ -390,13 +467,18 @@ const AdminStudents: React.FC = memo(() => {
                         aria-label="البحث عن طالب"
                     />
                 </div>
-                <button
-                    className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-white flex items-center gap-2 hover:bg-white/10 transition-colors"
-                    aria-label="تصفية النتائج"
-                >
-                    <Filter className="w-5 h-5" aria-hidden="true" />
-                    <span>تصفية</span>
-                </button>
+                <div className="flex gap-2">
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        aria-label="تصفية حسب الحالة"
+                    >
+                        <option value="all" className="text-black">جميع الحالات</option>
+                        <option value="active" className="text-black">نشط</option>
+                        <option value="inactive" className="text-black">غير نشط</option>
+                    </select>
+                </div>
             </section>
 
             {/* Students Table */}
@@ -414,14 +496,19 @@ const AdminStudents: React.FC = memo(() => {
                     </thead>
                     <tbody>
                         {paginatedItems.length > 0 ? (
-                            paginatedItems.map((student) => (
-                                <StudentRow
-                                    key={student.id}
-                                    student={student}
-                                    onDelete={handleDeleteStudent}
-                                    onEmail={handleEmailStudent}
-                                />
-                            ))
+                            paginatedItems.map((item) => {
+                                const student = item as User;
+                                return (
+                                    <StudentRow
+                                        key={student.id}
+                                        student={student}
+                                        onDelete={handleDeleteStudent}
+                                        onEdit={openEditModal}
+                                        onView={openDetailsModal}
+                                        onMessage={handleMessage}
+                                    />
+                                );
+                            })
                         ) : (
                             <tr>
                                 <td colSpan={6} className="py-8 text-center text-gray-400">
@@ -462,6 +549,22 @@ const AdminStudents: React.FC = memo(() => {
                 isOpen={isAddModalOpen}
                 onClose={handleCloseAddModal}
                 onSubmit={handleAddStudent}
+            />
+
+            {/* Edit Student Modal */}
+            <EditStudentModal
+                isOpen={editModalOpen}
+                onClose={() => setEditModalOpen(false)}
+                onSubmit={handleUpdateStudent}
+                student={selectedStudent}
+            />
+
+            {/* Student Details Modal */}
+            <StudentDetailsModal
+                isOpen={detailsModalOpen}
+                onClose={() => setDetailsModalOpen(false)}
+                studentId={selectedStudentId}
+                onMessage={handleMessageFromDetails}
             />
         </div>
     );

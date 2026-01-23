@@ -41,3 +41,5 @@ Mastaba-key/
 *.log
 .vercel
 temp_deploy/
+*.zip
+main.db

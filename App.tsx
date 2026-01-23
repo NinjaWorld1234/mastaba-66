@@ -14,6 +14,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { LanguageProvider } from './components/LanguageContext';
 import { ThemeProvider, useTheme } from './components/ThemeContext';
 import { AuthProvider, useAuth } from './components/AuthContext';
+import { ToastProvider, useToast } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -22,7 +23,6 @@ import InstallPrompt from './components/InstallPrompt';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { Course } from './types';
-import { COURSES } from './constants';
 
 // ============================================================================
 // Lazy-loaded Components (Code Splitting)
@@ -47,6 +47,7 @@ const ROUTE_IMPORTS = {
   progress: () => import('./components/PersonalProgress'),
   search: () => import('./components/Search'),
   certificates: () => import('./components/StudentCertificates'),
+  messages: () => import('./components/MessagingSystem'),
 
   // Admin
   'admin-dashboard': () => import('./components/AdminDashboard'),
@@ -81,6 +82,7 @@ const Favorites = lazy(ROUTE_IMPORTS.favorites);
 const PersonalProgress = lazy(ROUTE_IMPORTS.progress);
 const Search = lazy(ROUTE_IMPORTS.search);
 const StudentCertificates = lazy(ROUTE_IMPORTS.certificates);
+const MessagingSystem = lazy(ROUTE_IMPORTS.messages);
 
 // Admin Components
 const AdminDashboard = lazy(ROUTE_IMPORTS['admin-dashboard']);
@@ -119,6 +121,7 @@ const AppContent: React.FC = () => {
   // App Content Component logic
   const { user, isAuthenticated, isLoading, logout, login, checkSession, setUser } = useAuth();
   const { isDark } = useTheme();
+  const toast = useToast();
   const [viewState, setViewState] = useState<ViewState>('landing');
   const [authType, setAuthType] = useState<AuthType>('login');
   const [activeTab, setActiveTabOriginal] = useState('dashboard');
@@ -126,6 +129,8 @@ const AppContent: React.FC = () => {
   const [previousTab, setPreviousTab] = useState<string>('dashboard');
   const [isPending, startTransition] = React.useTransition();
   const [pendingEmail, setPendingEmail] = useState<string>('');
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Optimized tab switcher to prevent flickering
   const setActiveTab = React.useCallback((tab: string | ((prev: string) => string)) => {
@@ -138,6 +143,11 @@ const AppContent: React.FC = () => {
       }
     });
   }, []);
+
+  const handleOpenChat = React.useCallback((userId: string) => {
+    setSelectedConversationId(userId);
+    setActiveTab('messages');
+  }, [setActiveTab]);
 
   // Sync view state with authentication state
   useEffect(() => {
@@ -155,6 +165,32 @@ const AppContent: React.FC = () => {
       setPendingEmail(pendingVerificationEmail);
       setViewState('verification');
     }
+  }, [isAuthenticated]);
+
+  // Poll for unread messages
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const fetchUnread = async () => {
+      try {
+        const { api } = await import('./services/api');
+        const msgs = await api.getMessages();
+        const currentUser = api.getCurrentUser();
+
+        if (currentUser && Array.isArray(msgs)) {
+          // Count unread messages received by the current user
+          // For admins, this counts messages sent to them (or via SUPPORT routing)
+          const count = msgs.filter((m: any) => m.read === 0 && m.receiverId === currentUser.id).length;
+          setUnreadCount(count);
+        }
+      } catch (error) {
+        console.error("Failed to fetch unread messages", error);
+      }
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 10000); // Check every 10 seconds
+    return () => clearInterval(interval);
   }, [isAuthenticated]);
 
   // Preload route code on hover - MUST be before any conditional returns
@@ -175,7 +211,8 @@ const AppContent: React.FC = () => {
         'activity-log': ROUTE_IMPORTS['admin-activity-log'],
         'certificates-admin': ROUTE_IMPORTS['admin-certificates'],
         'backup': ROUTE_IMPORTS['admin-backup'],
-        'settings': ROUTE_IMPORTS.settings
+        'settings': ROUTE_IMPORTS.settings,
+        'messages': ROUTE_IMPORTS.messages
       };
       importFn = adminMap[tabId];
     } else {
@@ -192,7 +229,8 @@ const AppContent: React.FC = () => {
         'notifications': ROUTE_IMPORTS.notifications,
         'favorites': ROUTE_IMPORTS.favorites,
         'progress': ROUTE_IMPORTS.progress,
-        'search': ROUTE_IMPORTS.search
+        'search': ROUTE_IMPORTS.search,
+        'messages': ROUTE_IMPORTS.messages
       };
       importFn = studentMap[tabId];
     }
@@ -241,7 +279,8 @@ const AppContent: React.FC = () => {
       case 'dashboard':
         return <AdminDashboard setActiveTab={setActiveTab} />;
       case 'students':
-        return <AdminStudents />;
+        // We pass handleOpenChat so AdminStudents can open a specific conversation
+        return <AdminStudents onOpenChat={handleOpenChat} />;
       case 'audio-courses':
         return <AdminAudioCourses onPreview={(course) => {
           setPreviousTab('audio-courses');
@@ -264,6 +303,8 @@ const AppContent: React.FC = () => {
         return <AdminBackupSettings />;
       case 'settings':
         return <Settings />;
+      case 'messages':
+        return <MessagingSystem initialSelectedUserId={selectedConversationId} />;
       default:
         return (
           <div className="flex items-center justify-center h-64 text-gray-400">
@@ -304,6 +345,8 @@ const AppContent: React.FC = () => {
         return <PersonalProgress />;
       case 'search':
         return <Search />;
+      case 'messages':
+        return <MessagingSystem />;
       default:
         return (
           <div className="flex items-center justify-center h-64 text-gray-400">
@@ -357,11 +400,10 @@ const AppContent: React.FC = () => {
                 setViewState('app');
                 setActiveTab('dashboard');
               } else {
-                alert(`فشل تسجيل الدخول السريع. جرب الدخول يدوياً.`);
+                toast.error('فشل تسجيل الدخول السريع. جرب الدخول يدوياً.');
               }
             } catch (e) {
-              console.error('Quick login error:', e);
-              alert(`فشل تسجيل الدخول السريع.`);
+              toast.error('فشل تسجيل الدخول السريع.');
             }
           }}
         />
@@ -460,6 +502,7 @@ const AppContent: React.FC = () => {
         onPreload={preloadRoute}
         onLogout={handleLogout}
         role={user?.role || 'student'}
+        unreadMessagesCount={unreadCount}
       />
 
       {/* Main Content */}
@@ -589,7 +632,9 @@ const App: React.FC = () => {
       <LanguageProvider>
         <ThemeProvider>
           <AuthProvider>
-            <AppContent />
+            <ToastProvider>
+              <AppContent />
+            </ToastProvider>
           </AuthProvider>
         </ThemeProvider>
       </LanguageProvider>

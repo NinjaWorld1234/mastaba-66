@@ -10,6 +10,7 @@ import { BADGES } from '../constants';
 import { Course } from '../types';
 import api from '../services/api';
 import { useLanguage } from './LanguageContext';
+import { useAuth } from './AuthContext';
 
 /**
  * Dashboard component props
@@ -105,6 +106,7 @@ CourseCard.displayName = 'CourseCard';
  */
 const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }) => {
    const { t, language } = useLanguage();
+   const { user } = useAuth();
    const [courses, setCourses] = useState<Course[]>([]);
 
    useEffect(() => {
@@ -112,8 +114,7 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
          try {
             const data = await api.getCourses();
             setCourses(Array.isArray(data) ? data : []);
-         } catch (error) {
-            console.error('Failed to load courses:', error);
+         } catch {
             setCourses([]);
          }
       };
@@ -133,16 +134,28 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
       }
    }, [handleNavigate]);
 
+   /** Calculate actual progress from courses */
+   const courseProgress = useMemo(() => {
+      if (courses.length === 0) return 0;
+      const totalProgress = courses.reduce((sum, c) => sum + (c.progress || 0), 0);
+      return Math.round(totalProgress / courses.length);
+   }, [courses]);
+
    /** Chart data for progress pie chart */
    const chartData = useMemo(() => [
-      { name: 'Completed', value: 68 },
-      { name: 'Remaining', value: 32 },
-   ], []);
+      { name: 'Completed', value: courseProgress },
+      { name: 'Remaining', value: 100 - courseProgress },
+   ], [courseProgress]);
 
    const COLORS = useMemo(() => ['#10b981', 'rgba(255,255,255,0.1)'], []);
 
    /** Get displayed courses (first 4) */
    const displayedCourses = useMemo(() => courses.slice(0, 4), [courses]);
+
+   /** User statistics from context */
+   const userPoints = user?.points || 0;
+   const userStreak = user?.streak || 0;
+   const userLevel = user?.level || 1;
 
    return (
       <div className="space-y-6 animate-fade-in pb-10 relative" role="main" aria-label={t('dashboard.title') || 'Dashboard'}>
@@ -157,7 +170,7 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
                className="glass-panel-gold rounded-2xl p-4 relative overflow-hidden group bg-gradient-to-l from-[#451d03] to-[#78350f] cursor-pointer"
                role="button"
                tabIndex={0}
-               aria-label={`${t('dashboard.knowledgePoints')} - 1,250`}
+               aria-label={`${t('dashboard.knowledgePoints')} - ${userPoints.toLocaleString()}`}
             >
                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10" aria-hidden="true"></div>
                <div className="absolute -left-4 -bottom-4 w-20 h-20 bg-gold-500 rounded-full blur-[40px] opacity-40" aria-hidden="true"></div>
@@ -169,8 +182,8 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
                         {t('dashboard.knowledgePoints')}
                      </p>
                      <div className="flex items-baseline gap-2">
-                        <h3 className="text-3xl font-black text-white gold-glow font-serif">1,250</h3>
-                        <span className="text-[10px] text-gold-400 font-bold bg-black/30 px-1.5 py-0.5 rounded border border-gold-500/30">+150</span>
+                        <h3 className="text-3xl font-black text-white gold-glow font-serif">{userPoints.toLocaleString()}</h3>
+                        <span className="text-[10px] text-gold-400 font-bold bg-black/30 px-1.5 py-0.5 rounded border border-gold-500/30">{language === 'ar' ? `المستوى ${userLevel}` : `Level ${userLevel}`}</span>
                      </div>
                   </div>
 
@@ -217,7 +230,7 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
                className="glass-panel rounded-2xl p-4 relative overflow-hidden group bg-gradient-to-l from-[#1e1b4b] to-[#312e81] border-indigo-500/30 cursor-pointer"
                role="button"
                tabIndex={0}
-               aria-label={`${t('dashboard.learningStreak')} - 12 ${t('dashboard.daysStreak')}`}
+               aria-label={`${t('dashboard.learningStreak')} - ${userStreak} ${t('dashboard.daysStreak')}`}
             >
                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/hexellence.png')] opacity-10" aria-hidden="true"></div>
 
@@ -228,13 +241,13 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
                         {t('dashboard.learningStreak')}
                      </p>
                      <div className="flex items-baseline gap-2">
-                        <h3 className="text-3xl font-black text-white font-serif">12</h3>
+                        <h3 className="text-3xl font-black text-white font-serif">{userStreak}</h3>
                         <span className="text-xs font-medium text-indigo-300">{t('dashboard.daysStreak')}</span>
                      </div>
                   </div>
 
                   <div className="w-12 h-12 relative flex items-center justify-center bg-gradient-to-br from-indigo-400 to-purple-600 rounded-xl shadow-lg shadow-indigo-900/50 transform group-hover:scale-110 transition-transform" aria-hidden="true">
-                     <div className="w-1.5 h-1.5 bg-white rounded-full absolute top-2 right-2 animate-ping"></div>
+                     {userStreak > 0 && <div className="w-1.5 h-1.5 bg-white rounded-full absolute top-2 right-2 animate-ping"></div>}
                      <Zap className="w-6 h-6 text-[#1e1b4b] fill-current" />
                   </div>
                </div>
@@ -303,12 +316,12 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
                   className="glass-panel rounded-2xl p-4 flex items-center justify-between relative overflow-hidden group bg-gradient-to-br from-[#064e3b] to-[#022c22] cursor-pointer"
                   role="button"
                   tabIndex={0}
-                  aria-label={`${t('dashboard.courseProgress')} - 68% ${t('dashboard.completed')}`}
+                  aria-label={`${t('dashboard.courseProgress')} - ${courseProgress}% ${t('dashboard.completed')}`}
                >
                   <div>
                      <h3 className="text-xs font-bold text-gray-300 mb-1 group-hover:text-emerald-300 transition-colors">{t('dashboard.courseProgress')}</h3>
                      <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-black text-white">68%</span>
+                        <span className="text-2xl font-black text-white">{courseProgress}%</span>
                         <span className="text-[10px] text-emerald-400">{t('dashboard.completed')}</span>
                      </div>
                   </div>

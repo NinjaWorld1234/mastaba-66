@@ -42,7 +42,7 @@ const ResultCard = memo<{
     const Icon = typeIcons[result.type];
 
     const handleClick = useCallback(() => {
-        console.log('Navigate to result:', result.title);
+        // TODO: Navigate to result detail page
     }, [result.title]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -311,8 +311,8 @@ const Search: React.FC = memo(() => {
                                             key={page}
                                             onClick={() => goToPage(page)}
                                             className={`w-10 h-10 rounded-xl font-bold transition-all ${currentPage === page
-                                                    ? 'bg-emerald-600 text-white'
-                                                    : 'glass-panel text-gray-400 hover:bg-white/10'
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'glass-panel text-gray-400 hover:bg-white/10'
                                                 }`}
                                         >
                                             {page}

@@ -48,8 +48,7 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
     if (e.key === 'Enter') {
       const searchValue = e.currentTarget.value.trim();
       if (searchValue) {
-        // In production, this would trigger a search
-        console.log('Searching for:', searchValue);
+        // Navigate to search page with query
         setActiveTab?.('search');
       }
     }
@@ -134,8 +133,8 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
           <button
             onClick={() => setLanguage('ar')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${language === 'ar'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/50 font-bold'
-                : 'text-gray-400 hover:text-white'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/50 font-bold'
+              : 'text-gray-400 hover:text-white'
               }`}
             aria-pressed={language === 'ar'}
           >
@@ -144,8 +143,8 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
           <button
             onClick={() => setLanguage('en')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${language === 'en'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/50 font-bold'
-                : 'text-gray-400 hover:text-white'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/50 font-bold'
+              : 'text-gray-400 hover:text-white'
               }`}
             aria-pressed={language === 'en'}
           >

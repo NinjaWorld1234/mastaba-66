@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, User, ArrowRight, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { UserRole } from '../types';
 import { useAuth } from './AuthContext';
+import { useToast } from './Toast';
 
 interface AuthProps {
   initialView: 'login' | 'signup';
@@ -13,6 +14,7 @@ interface AuthProps {
 
 const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onBack, onToggleView, onVerificationRequired }) => {
   const { login } = useAuth();
+  const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -31,14 +33,15 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onBack, onTogg
         } else {
           // Fallback or error handling
           setIsLoading(false);
-          alert('بيانات الدخول غير صحيحة');
+          toast.error('بيانات الدخول غير صحيحة');
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         setIsLoading(false);
-        if (err.needsVerification && onVerificationRequired) {
-          onVerificationRequired(err.email || email);
+        const error = err as { needsVerification?: boolean; email?: string; messageAr?: string };
+        if (error.needsVerification && onVerificationRequired) {
+          onVerificationRequired(error.email || email);
         } else {
-          alert(err.messageAr || 'حدث خطأ أثناء تسجيل الدخول');
+          toast.error(error.messageAr || 'حدث خطأ أثناء تسجيل الدخول');
         }
       }
     } else {

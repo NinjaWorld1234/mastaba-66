@@ -23,6 +23,61 @@ import type {
 import { sanitizeHTML, sanitizeObject } from '../utils/sanitize';
 
 // ============================================================================
+// Error Types
+// ============================================================================
+
+/** Standard API error structure */
+interface ApiError {
+    message: string;
+    messageAr?: string;
+    code?: string;
+}
+
+/** Auth error with additional verification info */
+interface AuthError extends ApiError {
+    needsVerification?: boolean;
+    email?: string;
+}
+
+/** User data input for createUser */
+interface CreateUserInput {
+    email: string;
+    password?: string;
+    name: string;
+    nameEn?: string;
+    whatsapp?: string;
+    country?: string;
+    age?: number;
+    gender?: string;
+    educationLevel?: string;
+    role?: string;
+    status?: string;
+    joinDate?: string;
+    points?: number;
+    level?: number;
+    streak?: number;
+    avatar?: string;
+}
+
+/** Search result item */
+interface SearchResult {
+    id: string;
+    type: string;
+    title: string;
+    desc: string;
+    instructor?: string;
+    thumbnail?: string;
+}
+
+/** R2 File/Folder item */
+interface R2Item {
+    key?: string;
+    name?: string;
+    size?: number;
+    lastModified?: string;
+}
+
+// ============================================================================
 // Constants
 // ============================================================================
 
@@ -82,10 +137,13 @@ export const api = {
 
                 // Check if email verification is required
                 if (errorData.needsVerification) {
-                    const error: any = new Error(errorData.errorAr || 'Email not verified');
-                    error.needsVerification = true;
-                    error.email = email;
-                    throw error;
+                    const authError: AuthError = {
+                        message: errorData.error || 'Email not verified',
+                        messageAr: errorData.errorAr,
+                        needsVerification: true,
+                        email: email
+                    };
+                    throw authError;
                 }
 
                 return null;
@@ -106,16 +164,26 @@ export const api = {
                 return user;
             }
             return null;
-        } catch (error: any) {
-            if (error.needsVerification) {
+        } catch (error: unknown) {
+            const authError = error as { needsVerification?: boolean };
+            if (authError.needsVerification) {
                 throw error;
             }
-            console.error('Login error:', error);
             return null;
         }
     },
 
-    register: async (userData: any): Promise<{ user: User | null; error: any }> => {
+    register: async (userData: {
+        email: string;
+        password: string;
+        name: string;
+        nameEn?: string;
+        whatsapp?: string;
+        country?: string;
+        age?: number;
+        gender?: string;
+        educationLevel?: string;
+    }): Promise<{ user: User | null; error: { message: string; messageAr?: string } | null }> => {
         try {
             const response = await fetch('/api/register', {
                 method: 'POST',
@@ -126,7 +194,7 @@ export const api = {
             const data = await response.json();
 
             if (!response.ok) {
-                return { user: null, error: data.error || data.errorAr || 'Registration failed' };
+                return { user: null, error: { message: data.error || data.errorAr || 'Registration failed', messageAr: data.errorAr } };
             }
 
             if (data.user) {
@@ -146,13 +214,14 @@ export const api = {
                 return { user, error: null };
             }
 
-            return { user: null, error: 'Registration failed' };
-        } catch (error: any) {
-            return { user: null, error: error.message || 'Registration failed' };
+            return { user: null, error: { message: 'Registration failed' } };
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Registration failed';
+            return { user: null, error: { message } };
         }
     },
 
-    verifyOtp: async (email: string, token: string): Promise<{ success: boolean; user: User | null; error: any }> => {
+    verifyOtp: async (email: string, token: string): Promise<{ success: boolean; user: User | null; error: ApiError | null }> => {
         try {
             const response = await fetch('/api/verify-email', {
                 method: 'POST',
@@ -180,12 +249,13 @@ export const api = {
             }
 
             return { success: true, user: null, error: null };
-        } catch (error: any) {
-            return { success: false, user: null, error: error.message || 'Verification failed' };
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Verification failed';
+            return { success: false, user: null, error: { message } };
         }
     },
 
-    resendOtp: async (email: string): Promise<{ error: any }> => {
+    resendOtp: async (email: string): Promise<{ error: ApiError | null }> => {
         try {
             const response = await fetch('/api/resend-otp', {
                 method: 'POST',
@@ -200,8 +270,9 @@ export const api = {
             }
 
             return { error: null };
-        } catch (error: any) {
-            return { error: error.message || 'Failed to resend OTP' };
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to resend OTP';
+            return { error: { message } };
         }
     },
 
@@ -215,143 +286,70 @@ export const api = {
             if (!response.ok) return [];
 
             const data = await response.json();
-            return data.map((u: any) => ({
+            return data.map((u: Record<string, unknown>) => ({
                 ...u,
                 nameEn: u.nameEn || u.name_en,
                 joinDate: u.joinDate || u.join_date,
                 emailVerified: u.emailVerified || u.email_verified
-            }));
+            })) as User[];
         } catch {
             return [];
         }
     },
 
     updateUser: async (id: string, updates: Partial<User>): Promise<User | null> => {
-        // Map camelCase to snake_case for profile updates
-        const profileUpdates: any = { ...updates };
-        if (updates.nameEn) {
-            profileUpdates.name_en = updates.nameEn;
-            delete profileUpdates.nameEn;
-        }
-        if (updates.joinDate) {
-            profileUpdates.join_date = updates.joinDate;
-            delete profileUpdates.joinDate;
-        }
-        if (updates.emailVerified !== undefined) {
-            profileUpdates.email_verified = updates.emailVerified;
-            delete profileUpdates.emailVerified;
-        }
-        if (updates.educationLevel) {
-            profileUpdates.education_level = updates.educationLevel;
-            delete profileUpdates.educationLevel;
-        }
-
-        // Remove type only properties that aren't in DB
-        delete profileUpdates.access_token;
-        delete profileUpdates.password;
-
-        const { data, error } = await supabase
-            .from('users')
-            .update(profileUpdates)
-            .eq('id', id)
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Update user error:', error);
-            return null;
-        }
-
-        return {
-            ...data,
-            nameEn: data.name_en,
-            joinDate: data.join_date,
-            emailVerified: data.email_verified
-        };
-    },
-
-    createUser: async (userData: any): Promise<{ user: User | null; error: any }> => {
-        const password = userData.password || 'TempPass123!';
-        const { data, error } = await supabase.auth.signUp({
-            email: userData.email,
-            password: password,
-            options: {
-                data: {
-                    name: userData.name,
-                    name_en: userData.nameEn || userData.name,
-                }
-            }
+        const token = getAuthToken();
+        const response = await fetch(`/api/users/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updates)
         });
 
-        if (error) return { user: null, error };
+        if (!response.ok) return null;
 
-        if (data.user) {
-            const profileData = {
-                id: data.user.id,
-                email: userData.email,
-                name: userData.name,
-                name_en: userData.nameEn || userData.name,
-                whatsapp: userData.whatsapp || '',
-                country: userData.country || '',
-                age: userData.age || 20,
-                gender: userData.gender || 'male',
-                education_level: userData.educationLevel || '',
-                role: userData.role || 'student',
-                status: userData.status || 'active',
-                join_date: userData.joinDate || new Date().toISOString().split('T')[0],
-                points: userData.points || 0,
-                level: userData.level || 1,
-                streak: userData.streak || 0,
-                email_verified: false,
-                avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&background=064e3b&color=fff&size=100`
-            };
-
-            const { data: profile, error: pError } = await supabase
-                .from('users')
-                .upsert(profileData)
-                .select()
-                .single();
-
-            if (pError) return { user: null, error: pError };
-
-            const user: User = {
-                ...profile,
-                nameEn: profile.name_en,
-                joinDate: profile.join_date,
-                emailVerified: profile.email_verified
-            };
-
-            return { user, error: null };
+        // Return updated user (we might need to fetch it again or just merge)
+        const currentUser = api.getCurrentUser();
+        if (currentUser && currentUser.id === id) {
+            const updatedUser = { ...currentUser, ...updates };
+            localStorage.setItem(STORAGE_PREFIX + 'currentUser', JSON.stringify(updatedUser));
+            return updatedUser;
         }
+        return null;
+    },
 
-        return { user: null, error: 'User creation failed' };
+    getUserDetails: async (id: string): Promise<any> => {
+        const token = getAuthToken();
+        const response = await fetch(`/api/users/${id}/details`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to fetch user details');
+        return await response.json();
+    },
+
+    createUser: async (userData: CreateUserInput): Promise<{ user: User | null; error: ApiError | null }> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/register', { // Using register for creation
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+
+        const data = await response.json();
+        if (!response.ok) return { user: null, error: { message: data.error || 'Failed to create user' } };
+
+        return { user: data.user, error: null };
     },
 
     deleteUser: async (id: string): Promise<boolean> => {
-        try {
-            // Import supabaseAdmin dynamically to avoid issues if needed, 
-            // but it's already at the top of the file in my plan? 
-            // Wait, I didn't add it to imports in api.ts yet.
-            const { supabaseAdmin } = await import('../lib/supabase');
-
-            // 1. Delete from auth (requires service role)
-            const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
-            if (authError) {
-                console.warn('Auth deletion error (might already be deleted):', authError);
-            }
-
-            // 2. Delete from public.users (in case RLS or triggers didn't catch it)
-            const { error } = await supabase.from('users').delete().eq('id', id);
-
-            if (error) {
-                console.error('Delete user error:', error);
-                return false;
-            }
-            return true;
-        } catch (err) {
-            console.error('deleteUser failed:', err);
-            return false;
-        }
+        const token = getAuthToken();
+        const response = await fetch(`/api/users/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return response.ok;
     },
 
     getCurrentUser: (): User | null => {
@@ -378,7 +376,7 @@ export const api = {
             if (!response.ok) return [];
 
             const data = await response.json();
-            return data.map((c: any) => ({
+            return data.map((c: Record<string, unknown>) => ({
                 ...c,
                 titleEn: c.titleEn || c.title_en,
                 instructorEn: c.instructorEn || c.instructor_en,
@@ -388,58 +386,56 @@ export const api = {
                 lessonsCount: c.lessonsCount || c.lessons_count,
                 studentsCount: c.studentsCount || c.students_count,
                 videoUrl: c.videoUrl || c.video_url
-            }));
+            })) as Course[];
         } catch {
             return [];
         }
     },
 
     addCourse: async (course: Course): Promise<void> => {
-        const { error } = await supabase.from('courses').insert([{
-            title: course.title,
-            title_en: course.titleEn,
-            instructor: course.instructor,
-            instructor_en: course.instructorEn,
-            category: course.category,
-            category_en: course.categoryEn,
-            duration: course.duration,
-            duration_en: course.durationEn,
-            thumbnail: course.thumbnail,
-            description: course.description,
-            description_en: course.descriptionEn,
-            lessons_count: course.lessonsCount,
-            students_count: course.studentsCount,
-            video_url: course.videoUrl,
-            status: course.status || 'published'
-        }]);
-        if (error) throw error;
+        const token = getAuthToken();
+        const response = await fetch('/api/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(course)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to add course');
+        }
     },
 
     updateCourse: async (courseId: string, updates: Partial<Course>): Promise<void> => {
-        const mappedUpdates: any = {};
-        if (updates.title) mappedUpdates.title = updates.title;
-        if (updates.titleEn) mappedUpdates.title_en = updates.titleEn;
-        if (updates.instructor) mappedUpdates.instructor = updates.instructor;
-        if (updates.instructorEn) mappedUpdates.instructor_en = updates.instructorEn;
-        if (updates.category) mappedUpdates.category = updates.category;
-        if (updates.categoryEn) mappedUpdates.category_en = updates.categoryEn;
-        if (updates.duration) mappedUpdates.duration = updates.duration;
-        if (updates.durationEn) mappedUpdates.duration_en = updates.durationEn;
-        if (updates.thumbnail) mappedUpdates.thumbnail = updates.thumbnail;
-        if (updates.description) mappedUpdates.description = updates.description;
-        if (updates.descriptionEn) mappedUpdates.description_en = updates.descriptionEn;
-        if (updates.lessonsCount !== undefined) mappedUpdates.lessons_count = updates.lessonsCount;
-        if (updates.studentsCount !== undefined) mappedUpdates.students_count = updates.studentsCount;
-        if (updates.videoUrl) mappedUpdates.video_url = updates.videoUrl;
-        if (updates.status) mappedUpdates.status = updates.status;
-
-        const { error } = await supabase.from('courses').update(mappedUpdates).eq('id', courseId);
-        if (error) throw error;
+        const token = getAuthToken();
+        const response = await fetch(`/api/courses/${courseId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updates)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update course');
+        }
     },
 
     deleteCourse: async (courseId: string): Promise<void> => {
-        const { error } = await supabase.from('courses').delete().eq('id', courseId);
-        if (error) throw error;
+        const token = getAuthToken();
+        const response = await fetch(`/api/courses/${courseId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete course');
+        }
     },
 
     updateCourseProgress: async (courseId: string, progress: number): Promise<void> => {
@@ -483,139 +479,77 @@ export const api = {
         return error ? [] : data;
     },
 
-    // ========================================================================
-    // Announcements
-    // ========================================================================
-
-    getAnnouncements: async (): Promise<Announcement[]> => {
-        const { data, error } = await supabase
-            .from('announcements')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (error) return [];
-        return data.map(a => ({
-            ...a,
-            isActive: a.is_active,
-            createdAt: a.created_at
-        }));
-    },
-
-    addAnnouncement: async (announcement: Announcement): Promise<void> => {
-        const { error } = await supabase.from('announcements').insert([{
-            title: announcement.title,
-            content: announcement.content,
-            type: announcement.type,
-            priority: announcement.priority,
-            is_active: announcement.isActive !== undefined ? announcement.isActive : true
-        }]);
-        if (error) throw error;
-    },
-
-    deleteAnnouncement: async (id: string): Promise<void> => {
-        const { error } = await supabase.from('announcements').delete().eq('id', id);
-        if (error) throw error;
-    },
-
-    updateAnnouncement: async (id: string, updates: Partial<Announcement>): Promise<void> => {
-        const mappedUpdates: any = { ...updates };
-        if (updates.isActive !== undefined) {
-            mappedUpdates.is_active = updates.isActive;
-            delete mappedUpdates.isActive;
-        }
-
-        const { error } = await supabase.from('announcements').update(mappedUpdates).eq('id', id);
-        if (error) throw error;
-    },
 
     // ========================================================================
     // Quizzes
     // ========================================================================
 
     getQuizzes: async (): Promise<Quiz[]> => {
-        const { data, error } = await supabase.from('quizzes').select('*, quiz_questions(*)');
-        if (error) return [];
-        return data.map(q => ({
-            ...q,
-            titleEn: q.title_en,
-            afterEpisodeIndex: q.after_episode_index,
-            passingScore: q.passing_score,
-            questions: q.quiz_questions.map((qn: any) => ({
-                ...qn,
-                textEn: qn.text_en,
-                optionsEn: qn.options_en,
-                correctAnswer: qn.correct_answer
-            }))
-        }));
-    },
-
-    addQuiz: async (quiz: Quiz): Promise<void> => {
-        const { data, error } = await supabase
-            .from('quizzes')
-            .insert([{
-                title: quiz.title,
-                title_en: quiz.titleEn,
-                after_episode_index: quiz.afterEpisodeIndex,
-                passing_score: quiz.passingScore,
-                course_id: quiz.courseId
-            }])
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        if (quiz.questions && quiz.questions.length > 0) {
-            const questions = quiz.questions.map(q => ({
-                quiz_id: data.id,
-                text: q.text,
-                text_en: q.textEn,
-                options: q.options,
-                options_en: q.optionsEn,
-                correct_answer: q.correctAnswer
-            }));
-            await supabase.from('quiz_questions').insert(questions);
+        try {
+            const response = await fetch('/api/quizzes');
+            if (!response.ok) return [];
+            return await response.json();
+        } catch {
+            return [];
         }
     },
 
-    updateQuiz: async (id: string, updates: Partial<Quiz>): Promise<void> => {
-        const mappedUpdates: any = {};
-        if (updates.title) mappedUpdates.title = updates.title;
-        if (updates.titleEn) mappedUpdates.title_en = updates.titleEn;
-        if (updates.afterEpisodeIndex !== undefined) mappedUpdates.after_episode_index = updates.afterEpisodeIndex;
-        if (updates.passingScore !== undefined) mappedUpdates.passing_score = updates.passingScore;
+    addQuiz: async (quiz: Quiz): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/quizzes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(quiz)
+        });
+        if (!response.ok) throw new Error('Failed to add quiz');
+    },
 
-        await supabase.from('quizzes').update(mappedUpdates).eq('id', id);
+    updateQuiz: async (id: string, updates: Partial<Quiz>): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch(`/api/quizzes/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updates)
+        });
+        if (!response.ok) throw new Error('Failed to update quiz');
     },
 
     deleteQuiz: async (id: string): Promise<void> => {
-        await supabase.from('quizzes').delete().eq('id', id);
+        const token = getAuthToken();
+        const response = await fetch(`/api/quizzes/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to delete quiz');
     },
 
     quizResults: {
         save: async (quizId: string, score: number, total: number): Promise<void> => {
-            const user = api.getCurrentUser();
-            if (!user) return;
-            await supabase.from('quiz_results').insert([{
-                user_id: user.id,
-                quiz_id: quizId,
-                score,
-                total,
-                percentage: Math.round((score / total) * 100)
-            }]);
+            const token = getAuthToken();
+            const response = await fetch('/api/quiz-results', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ quizId, score, total, percentage: Math.round((score / total) * 100) })
+            });
+            if (!response.ok) throw new Error('Failed to save quiz results');
         },
 
         get: async (): Promise<QuizResult[]> => {
-            const user = api.getCurrentUser();
-            if (!user) return [];
-            const { data, error } = await supabase.from('quiz_results').select('*').eq('user_id', user.id).order('completed_at', { ascending: false });
-            if (error) return [];
-            return data.map(r => ({
-                quizId: r.quiz_id,
-                score: r.score,
-                total: r.total,
-                percentage: r.percentage,
-                completedAt: r.completed_at
-            }));
+            const token = getAuthToken();
+            const response = await fetch('/api/quiz-results', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) return [];
+            return await response.json();
         }
     },
 
@@ -660,31 +594,220 @@ export const api = {
         }
     },
 
+    // ========================================================================
+    // Certificates
+    // ========================================================================
+
     getCertificates: async (): Promise<Certificate[]> => {
-        const user = api.getCurrentUser();
-        if (!user) return [];
-        const { data, error } = await supabase.from('certificates').select('*').eq('user_id', user.id).order('issue_date', { ascending: false });
-        if (error) return [];
-        return data.map(c => ({
-            ...c,
-            studentId: c.user_id,
-            issueDate: c.issue_date,
-            userName: c.student_name,
-            studentName: c.student_name,
-            courseTitle: c.course_title
-        }));
+        try {
+            const token = getAuthToken();
+            const response = await fetch('/api/certificates', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) return [];
+            return await response.json();
+        } catch {
+            return [];
+        }
     },
 
-    issueCertificate: async (certData: Omit<Certificate, 'id' | 'issueDate' | 'code'> & { userId?: string }): Promise<void> => {
-        await supabase.from('certificates').insert([{
-            user_id: certData.studentId || certData.userId,
-            student_name: certData.studentName || certData.userName,
-            course_id: certData.courseId,
-            course_title: certData.courseTitle,
-            grade: certData.grade,
-            code: 'CERT-' + Math.random().toString(36).substr(2, 9).toUpperCase()
-        }]);
+    generateCertificate: async (courseId: string): Promise<Certificate> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/certificates', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ courseId })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to generate certificate');
+        }
+        return await response.json();
     },
+
+    generateMasterCertificate: async (): Promise<Certificate> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/certificates/master', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to generate master certificate');
+        }
+        return await response.json();
+    },
+
+    // Legacy Supabase Issue (Keep for compatibility if needed, but unused)
+    issueCertificate: async (certData: Omit<Certificate, 'id' | 'issueDate' | 'code'> & { userId?: string }): Promise<void> => {
+        // No-op or throw in new system
+        console.warn('Legacy issueCertificate called');
+    },
+
+    // ========================================================================
+    // Messaging
+    // ========================================================================
+
+    getMessages: async (): Promise<any[]> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/messages', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return [];
+        return await response.json();
+    },
+
+    sendMessage: async (receiverId: string, content: string): Promise<any> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ receiverId, content })
+        });
+        if (!response.ok) throw new Error('Failed to send message');
+        return await response.json();
+    },
+
+    markMessageRead: async (id: string): Promise<void> => {
+        const token = getAuthToken();
+        await fetch(`/api/messages/${id}/read`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    },
+
+    markConversationAsRead: async (userId: string): Promise<void> => {
+        const token = getAuthToken();
+        await fetch(`/api/messages/conversation/${userId}/read`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    },
+
+    // Admin helper
+    getStudents: async (): Promise<User[]> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/users/students', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return [];
+        return await response.json();
+    },
+
+    // Backup
+    downloadBackup: async (): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/backup/download', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Download failed');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup-${new Date().toISOString().split('T')[0]}.sqlite`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    },
+
+    uploadCloudBackup: async (): Promise<{ success: boolean; key: string, size: number }> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/backup/cloud', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Cloud upload failed');
+        return await response.json();
+    },
+
+    restoreBackup: async (file: File): Promise<void> => {
+        const token = getAuthToken();
+        // Send as raw binary
+        const response = await fetch('/api/backup/restore', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/octet-stream'
+            },
+            body: file
+        });
+        if (!response.ok) throw new Error('Restore failed');
+    },
+
+    // ========================================================================
+    // Announcements
+    // ========================================================================
+
+    getAnnouncements: async (): Promise<Announcement[]> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/announcements', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return [];
+        return await response.json();
+    },
+
+    addAnnouncement: async (data: Partial<Announcement>): Promise<Announcement> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/announcements', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to add announcement');
+        }
+        return await response.json();
+    },
+
+    updateAnnouncement: async (id: string, data: Partial<Announcement>): Promise<Announcement> => {
+        const token = getAuthToken();
+        const response = await fetch(`/api/announcements/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update announcement');
+        }
+        return await response.json();
+    },
+
+    deleteAnnouncement: async (id: string): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch(`/api/announcements/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete announcement');
+        }
+    },
+
+
 
     // ========================================================================
     // Favorites & Search
@@ -713,9 +836,9 @@ export const api = {
         return !!data?.is_favorite;
     },
 
-    search: async (query: string, category: string = 'all'): Promise<any[]> => {
+    search: async (query: string, category: string = 'all'): Promise<SearchResult[]> => {
         const sanitizedQuery = query ? query.toLowerCase() : '';
-        const results: any[] = [];
+        const results: SearchResult[] = [];
         if (category === 'all' || category === 'course') {
             const courses = await api.getCourses();
             results.push(...courses.filter(c => !sanitizedQuery || c.title.toLowerCase().includes(sanitizedQuery)).map(c => ({ id: c.id, type: 'course', title: c.title, desc: c.description || '', instructor: c.instructor, thumbnail: c.thumbnail })));
@@ -727,7 +850,7 @@ export const api = {
     // Cloudflare R2 Storage
     // ========================================================================
     r2: {
-        listFiles: async (prefix: string = ''): Promise<{ files: any[]; folders: any[]; prefix: string }> => {
+        listFiles: async (prefix: string = ''): Promise<{ files: R2Item[]; folders: R2Item[]; prefix: string }> => {
             const token = getAuthToken();
             const url = `/api/r2/files?prefix=${encodeURIComponent(prefix)}`;
             const response = await fetch(url, {

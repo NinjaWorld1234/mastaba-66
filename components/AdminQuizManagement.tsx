@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardList, Plus, Edit, Trash2, Eye, Users, Clock, CheckCircle, BarChart, X, Save, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
-import { Quiz, Question } from '../types';
+import { Quiz, Question, Course } from '../types';
 
 const AdminQuizManagement: React.FC = () => {
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -9,11 +9,13 @@ const AdminQuizManagement: React.FC = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
 
     // Form State
+    const [courses, setCourses] = useState<Course[]>([]);
     const [quizForm, setQuizForm] = useState<Partial<Quiz>>({
         title: '',
-        courseId: '1', // Default first course
+        courseId: '',
         questions: [],
-        passingScore: 70
+        passingScore: 70,
+        afterEpisodeIndex: 3 // Default as per user request
     });
 
     // Question Editing State
@@ -27,8 +29,11 @@ const AdminQuizManagement: React.FC = () => {
         loadQuizzes();
     }, []);
 
-    const loadQuizzes = () => {
-        setQuizzes(api.getQuizzes());
+    const loadQuizzes = async () => {
+        const data = await api.getQuizzes();
+        setQuizzes(data);
+        const coursesData = await api.getCourses();
+        setCourses(coursesData);
     };
 
     const handleDelete = (id: string) => {
@@ -44,7 +49,8 @@ const AdminQuizManagement: React.FC = () => {
             title: quiz.title,
             courseId: quiz.courseId,
             questions: quiz.questions,
-            passingScore: quiz.passingScore
+            passingScore: quiz.passingScore,
+            afterEpisodeIndex: quiz.afterEpisodeIndex
         });
         setIsModalOpen(true);
     };
@@ -97,7 +103,7 @@ const AdminQuizManagement: React.FC = () => {
 
         setIsModalOpen(false);
         setEditingId(null);
-        setQuizForm({ title: '', courseId: '1', questions: [], passingScore: 70 });
+        setQuizForm({ title: '', courseId: '', questions: [], passingScore: 70, afterEpisodeIndex: 3 });
         loadQuizzes();
     };
 
@@ -118,7 +124,7 @@ const AdminQuizManagement: React.FC = () => {
                 <button
                     onClick={() => {
                         setEditingId(null);
-                        setQuizForm({ title: '', courseId: '1', questions: [], passingScore: 70 });
+                        setQuizForm({ title: '', courseId: courses.length > 0 ? courses[0].id : '', questions: [], passingScore: 70, afterEpisodeIndex: 3 });
                         setIsModalOpen(true);
                     }}
                     className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold hover:opacity-90 flex items-center gap-2"
@@ -206,12 +212,28 @@ const AdminQuizManagement: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-gray-400 text-sm mb-2">الرقم التعريفي للدورة</label>
-                                        <input
+                                        <label className="block text-gray-400 text-sm mb-2">الدورة التدريبية</label>
+                                        <select
                                             required
                                             value={quizForm.courseId}
                                             onChange={e => setQuizForm({ ...quizForm, courseId: e.target.value })}
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                                            className="w-full bg-[#0a1815] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 appearance-none"
+                                        >
+                                            <option value="">اختر الدورة...</option>
+                                            {courses.map(c => (
+                                                <option key={c.id} value={c.id}>{c.title}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-gray-400 text-sm mb-2">يظهر بعد المحاضرة رقم</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="0"
+                                            value={quizForm.afterEpisodeIndex}
+                                            onChange={e => setQuizForm({ ...quizForm, afterEpisodeIndex: parseInt(e.target.value) })}
+                                            className="w-full bg-[#0a1815] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
                                         />
                                     </div>
                                 </div>

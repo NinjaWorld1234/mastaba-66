@@ -19,14 +19,34 @@ const AdminAnnouncements: React.FC = () => {
         loadAnnouncements();
     }, []);
 
-    const loadAnnouncements = () => {
-        setAnnouncements(api.getAnnouncements());
+    const loadAnnouncements = async () => {
+        try {
+            const data = await api.getAnnouncements();
+            // Map backend 'type' to frontend 'target' if needed, or just use data as is if type matches
+            // Backend returns: { id, title, content, type, priority, is_active, created_at }
+            // Frontend expects: Announcement type. 
+            // We'll map type -> target for compatibility or just use type.
+            // Let's assume we map type to target for the UI dropdown.
+            const mapped = (data as any[]).map(a => ({
+                ...a,
+                target: a.type || 'all',
+                date: a.created_at ? a.created_at.split('T')[0] : new Date().toISOString().split('T')[0]
+            }));
+            setAnnouncements(mapped);
+        } catch (error) {
+            console.error('Failed to load announcements', error);
+        }
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('هل أنت متأكد من حذف هذا الإعلان؟')) {
-            api.deleteAnnouncement(id);
-            loadAnnouncements();
+            try {
+                await api.deleteAnnouncement(id);
+                loadAnnouncements();
+            } catch (error) {
+                console.error('Failed to delete', error);
+                alert('فشل الحذف');
+            }
         }
     };
 
@@ -35,42 +55,53 @@ const AdminAnnouncements: React.FC = () => {
         setFormData({
             title: announcement.title,
             content: announcement.content,
-            target: announcement.target,
+            target: announcement.target || announcement.type || 'all',
             priority: announcement.priority
         });
         setIsModalOpen(true);
     };
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (editingId) {
-            api.updateAnnouncement(editingId, formData);
-        } else {
-            api.addAnnouncement({
-                id: Date.now().toString(),
-                title: formData.title || '',
-                content: formData.content || '',
-                date: new Date().toISOString().split('T')[0],
-                target: formData.target || 'all',
-                priority: formData.priority || 'medium',
-                author: 'Admin'
-            });
-        }
+        try {
+            const payload = {
+                title: formData.title,
+                content: formData.content,
+                type: formData.target, // Map target to type
+                priority: formData.priority,
+            };
 
-        setIsModalOpen(false);
-        setEditingId(null);
-        setFormData({ title: '', content: '', target: 'all', priority: 'medium' });
-        loadAnnouncements();
+            if (editingId) {
+                await api.updateAnnouncement(editingId, payload);
+            } else {
+                await api.addAnnouncement(payload);
+            }
+
+            setIsModalOpen(false);
+            setEditingId(null);
+            setFormData({ title: '', content: '', target: 'all', priority: 'medium' });
+            loadAnnouncements();
+        } catch (error) {
+            console.error('Failed to save', error);
+            alert('فشل الحفظ');
+        }
     };
 
-    const handlePublish = (id: string) => {
-        // In a real app, status would be a field. For now, we assume it's part of the object or handled via logic.
-        // Since our mock interface might not have status explicitly in 'Announcement' type defined in step 23 (I added it in step 32? Let's check),
-        // actually I defined Announcement as: { id, title, content, date, target, priority, author }. 
-        // I should probably add status to the type if I want to support drafts properly.
-        // For this task, I'll simulate publishing by sending a "notification" or just logging it.
-        alert('تم نشر الإعلان بنجاح لإرسال الإشعارات');
+    const handlePublish = async (id: string) => {
+        // Toggle active status or re-publish?
+        // Server has is_active.
+        // For now, let's toggle active status via update.
+        try {
+            const announcement = announcements.find(a => a.id === id);
+            if (announcement) {
+                await api.updateAnnouncement(id, { isActive: !announcement.isActive });
+                loadAnnouncements();
+                alert(announcement.isActive ? 'تم إيقاف الإعلان' : 'تم نشر الإعلان');
+            }
+        } catch (error) {
+            console.error('Publish failed', error);
+        }
     };
 
     return (
