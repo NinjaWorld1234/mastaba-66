@@ -1479,11 +1479,16 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // SPA Fallback
 // ============================================================================
 // SPA Fallback - MUST BE LAST
-app.use((req, res) => {
+app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: `API endpoint ${req.path} not found` });
     }
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('Production build not found. Please run "npm run build" first.');
+    }
 });
 
 // Start Server
