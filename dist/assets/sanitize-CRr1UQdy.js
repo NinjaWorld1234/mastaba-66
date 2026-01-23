@@ -1,0 +1,1 @@
+const r={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#x27;","/":"&#x2F;","`":"&#x60;","=":"&#x3D;"},n=t=>typeof t!="string"?"":t.replace(/[&<>"'`=/]/g,e=>r[e]||e),o=t=>{if(typeof t!="string")return"";const e=/^[^\s@]+@[^\s@]+\.[^\s@]+$/,s=t.trim().toLowerCase();return e.test(s)?s:""};export{o as a,n as s};
