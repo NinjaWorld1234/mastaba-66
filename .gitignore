@@ -4,7 +4,14 @@ node_modules/
 .pnp.js
 
 # Build output
+dist/
+deploy_pkg/
 build/
+.vercel
+temp_deploy/
+
+# Zips
+*.zip
 
 # Local env files
 .env
@@ -13,10 +20,22 @@ build/
 .env.test.local
 .env.production.local
 
+# Backups
+*.bak
+
+# Database
+*.sqlite
+database.sqlite
+main.db
+*.db-journal
+*.db-shm
+*.db-wal
+
 # Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
 # IDE
 .idea/
@@ -28,17 +47,6 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Database (local)
-*.sqlite
-database.sqlite
-
 # SSH Keys
 *.pem
 Mastaba-key/
-
-# Misc
-*.log
-.vercel
-temp_deploy/
-*.zip
-main.db
