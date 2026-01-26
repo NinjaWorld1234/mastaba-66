@@ -466,13 +466,14 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                     const isPassed = passedQuizIds.includes(quiz.id);
                     const afterEpIdx = quiz.afterEpisodeIndex || 0;
                     // A quiz is locked if the episode it follows is not completed (or if it's the current one and not yet finished)
-                    const isLocked = afterEpIdx > 0 && isEpisodeLocked(afterEpIdx - 1);
+                    const isAdmin = user?.role === 'admin';
+                    const isLocked = !isAdmin && afterEpIdx > 0 && isEpisodeLocked(afterEpIdx - 1);
 
                     return (
                       <div
                         key={`quiz-${quiz.id}`}
                         onClick={() => {
-                          if (!isLocked && !isPassed && user?.role !== 'admin') {
+                          if (isAdmin || (!isLocked && !isPassed)) {
                             setActiveQuiz(quiz);
                           }
                         }}
