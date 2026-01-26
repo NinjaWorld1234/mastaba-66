@@ -10,6 +10,40 @@ export const quizzesApi = {
         return response.ok ? await response.json() : [];
     },
 
+    addQuiz: async (quiz: Partial<Quiz>): Promise<void> => {
+        const token = getAuthToken();
+        await fetch('/api/quizzes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(quiz)
+        });
+    },
+
+    updateQuiz: async (id: string, quiz: Partial<Quiz>): Promise<void> => {
+        const token = getAuthToken();
+        await fetch(`/api/quizzes/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(quiz)
+        });
+    },
+
+    deleteQuiz: async (id: string): Promise<void> => {
+        const token = getAuthToken();
+        await fetch(`/api/quizzes/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+    },
+
     quizResults: {
         save: async (quizId: string, score: number, total: number): Promise<void> => {
             const token = getAuthToken();

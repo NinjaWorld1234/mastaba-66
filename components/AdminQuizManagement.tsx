@@ -97,7 +97,8 @@ const AdminQuizManagement: React.FC = () => {
                 titleEn: quizForm.title || 'New Quiz',
                 courseId: quizForm.courseId || '1',
                 questions: quizForm.questions || [],
-                passingScore: quizForm.passingScore || 70
+                passingScore: quizForm.passingScore || 70,
+                afterEpisodeIndex: quizForm.afterEpisodeIndex
             });
         }
 
@@ -221,7 +222,9 @@ const AdminQuizManagement: React.FC = () => {
                                         >
                                             <option value="">اختر الدورة...</option>
                                             {courses.map(c => (
-                                                <option key={c.id} value={c.id}>{c.title}</option>
+                                                <option key={c.id} value={c.id}>
+                                                    {c.title} ({c.lessonsCount || c.episodes?.length || 0} محاضرة)
+                                                </option>
                                             ))}
                                         </select>
                                     </div>
@@ -233,6 +236,35 @@ const AdminQuizManagement: React.FC = () => {
                                             min="0"
                                             value={quizForm.afterEpisodeIndex}
                                             onChange={e => setQuizForm({ ...quizForm, afterEpisodeIndex: parseInt(e.target.value) })}
+                                            className="w-full bg-[#0a1815] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const course = courses.find(c => c.id === quizForm.courseId);
+                                                    const total = course?.lessonsCount || course?.episodes?.length || 0;
+                                                    setQuizForm({ ...quizForm, afterEpisodeIndex: total });
+                                                }}
+                                                className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded hover:bg-emerald-500/20 transition-colors"
+                                            >
+                                                تعيين كاختبار نهائي
+                                            </button>
+                                            <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                <AlertCircle className="w-3 h-3" />
+                                                اتركه 0 إذا كان الاختبار متاحاً من البداية
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-gray-400 text-sm mb-2">درجة النجاح (%)</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="0"
+                                            max="100"
+                                            value={quizForm.passingScore}
+                                            onChange={e => setQuizForm({ ...quizForm, passingScore: parseInt(e.target.value) })}
                                             className="w-full bg-[#0a1815] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
                                         />
                                     </div>

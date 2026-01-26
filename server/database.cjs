@@ -131,12 +131,22 @@ function initDatabase() {
   db.exec(`
         CREATE TABLE IF NOT EXISTS quizzes (
             id TEXT PRIMARY KEY,
+            courseId TEXT,
             title TEXT NOT NULL,
+            title_en TEXT,
             description TEXT,
             questions TEXT, -- Storing JSON string of questions for now
+            passing_score INTEGER DEFAULT 70,
+            afterEpisodeIndex INTEGER,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+  // Migration for quizzes table
+  try { db.prepare('ALTER TABLE quizzes ADD COLUMN courseId TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE quizzes ADD COLUMN title_en TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE quizzes ADD COLUMN passing_score INTEGER DEFAULT 70').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE quizzes ADD COLUMN afterEpisodeIndex INTEGER').run(); } catch (e) { }
 
   db.exec(`
         CREATE TABLE IF NOT EXISTS quiz_results (

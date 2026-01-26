@@ -148,20 +148,16 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
     }
 
     // Check for manual quiz at this stage
+    // A quiz at index N appears AFTER episode N (1-indexed)
+    // So if currentEpisodeIndex (0-indexed) is finished, it's (currentEpisodeIndex + 1)
     let quizToShow = quizzes.find(q => q.afterEpisodeIndex === currentEpisodeIndex + 1);
 
-    // If no manual quiz but frequency is hit, try to find ANY quiz for this course that hasn't been passed
-    // or specifically look for a quiz designated for this frequency slot.
-    // For now, we prioritize explicit afterEpisodeIndex mapping.
-    const quizFrequency = course.quizFrequency || 0;
-    const isFrequencySlot = quizFrequency > 0 && (currentEpisodeIndex + 1) % quizFrequency === 0;
-
-    if (isFrequencySlot && !quizToShow && user?.role !== 'admin') {
-      // Fallback: Find the NEXT available quiz for this course if frequency is hit but no specific mapping
-      quizToShow = quizzes.find(q => !passedQuizIds.includes(q.id));
+    // Filter out quizzes already passed
+    if (quizToShow && passedQuizIds.includes(quizToShow.id)) {
+      quizToShow = undefined;
     }
 
-    if (quizToShow && !passedQuizIds.includes(quizToShow.id) && user?.role !== 'admin') {
+    if (quizToShow && user?.role !== 'admin') {
       setActiveQuiz(quizToShow);
       return;
     }
