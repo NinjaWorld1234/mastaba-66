@@ -9,7 +9,8 @@ router.get('/', (req, res) => {
         res.json(quizzes.map(q => ({
             ...q,
             questions: JSON.parse(q.questions || '[]'),
-            passingScore: q.passing_score // map database field to frontend field
+            passingScore: q.passing_score || 70,
+            titleEn: q.title_en || q.title
         })));
     } catch (e) {
         res.status(500).json({ error: e.message });

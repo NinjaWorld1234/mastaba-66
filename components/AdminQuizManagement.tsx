@@ -36,10 +36,15 @@ const AdminQuizManagement: React.FC = () => {
         setCourses(coursesData);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('هل أنت متأكد من حذف هذا الاختبار؟')) {
-            api.deleteQuiz(id);
-            loadQuizzes();
+            try {
+                await api.deleteQuiz(id);
+                await loadQuizzes();
+            } catch (error) {
+                console.error('Failed to delete quiz:', error);
+                alert('فشل حذف الاختبار.');
+            }
         }
     };
 
@@ -85,27 +90,42 @@ const AdminQuizManagement: React.FC = () => {
         setQuizForm({ ...quizForm, questions: updatedQuestions });
     };
 
-    const handleSaveQuiz = (e: React.FormEvent) => {
+    const handleSaveQuiz = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (editingId) {
-            api.updateQuiz(editingId, quizForm);
-        } else {
-            api.addQuiz({
-                id: Date.now().toString(),
-                title: quizForm.title || 'اختبار جديد',
-                titleEn: quizForm.title || 'New Quiz',
-                courseId: quizForm.courseId || '1',
-                questions: quizForm.questions || [],
-                passingScore: quizForm.passingScore || 70,
-                afterEpisodeIndex: quizForm.afterEpisodeIndex
-            });
+        if (!quizForm.courseId) {
+            alert('يرجى اختيار الدورة التدريبية');
+            return;
         }
 
-        setIsModalOpen(false);
-        setEditingId(null);
-        setQuizForm({ title: '', courseId: '', questions: [], passingScore: 70, afterEpisodeIndex: 3 });
-        loadQuizzes();
+        if (quizForm.questions.length === 0) {
+            alert('يجب إضافة سؤال واحد على الأقل للاختبار');
+            return;
+        }
+
+        try {
+            if (editingId) {
+                await api.updateQuiz(editingId, quizForm);
+            } else {
+                await api.addQuiz({
+                    id: Date.now().toString(),
+                    title: quizForm.title || 'اختبار جديد',
+                    titleEn: quizForm.title || 'New Quiz',
+                    courseId: quizForm.courseId || '1',
+                    questions: quizForm.questions || [],
+                    passingScore: quizForm.passingScore || 70,
+                    afterEpisodeIndex: quizForm.afterEpisodeIndex
+                });
+            }
+
+            setIsModalOpen(false);
+            setEditingId(null);
+            setQuizForm({ title: '', courseId: '', questions: [], passingScore: 70, afterEpisodeIndex: 3 });
+            await loadQuizzes();
+        } catch (error) {
+            console.error('Failed to save quiz:', error);
+            alert('فشل حفظ الاختبار. يرجى التحقق من اتصالك بالخادم.');
+        }
     };
 
     const stats = [

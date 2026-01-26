@@ -20,6 +20,16 @@ const Quiz: React.FC<QuizProps> = ({ quiz, onSuccess, onClose }) => {
   const [score, setScore] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
 
+  if (!quiz.questions || quiz.questions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <X className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-2xl font-bold text-white mb-2">هذا الاختبار لا يحتوي على أسئلة حالياً</h2>
+        <button onClick={onClose} className="mt-4 px-6 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20">إغلاق</button>
+      </div>
+    );
+  }
+
   const question = quiz.questions[currentQuestionIdx];
   const totalQuestions = quiz.questions.length;
   const passingScore = quiz.passingScore || 70;
