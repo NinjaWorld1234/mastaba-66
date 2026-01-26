@@ -340,6 +340,7 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
             name: sanitizedName,
             nameEn: sanitizedName,
             email: sanitizedEmail,
+            password: formData.password, // Include password
             role: 'student',
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(sanitizedName)}&background=064e3b&color=fff&size=100`,
             points: 0,

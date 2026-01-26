@@ -18,23 +18,36 @@ const AdminCertificateManagement: React.FC = () => {
         loadCertificates();
     }, []);
 
-    const loadCertificates = () => {
-        setCertificates(api.getCertificates());
+    const loadCertificates = async () => {
+        try {
+            // @ts-ignore - Dynamic property from adminApi spread
+            const data = await api.getAllCertificates();
+            setCertificates(data);
+        } catch (error) {
+            console.error('Failed to load certificates:', error);
+        }
     };
 
-    const handleIssueCertificate = (e: React.FormEvent) => {
+    const handleIssueCertificate = async (e: React.FormEvent) => {
         e.preventDefault();
-        api.issueCertificate({
-            userId: 'manual-' + Date.now(), // Mocking user linkage
-            studentId: 'manual-' + Date.now(), // Satisfy required field
-            userName: newCert.studentName,
-            courseId: 'manual-' + Date.now(),
-            courseTitle: newCert.courseTitle,
-            grade: newCert.grade
-        });
-        setIsModalOpen(false);
-        setNewCert({ studentName: '', courseTitle: '', grade: 'Excellent' });
-        loadCertificates();
+        try {
+            // @ts-ignore - Dynamic property from adminApi spread
+            await api.issueCertificate({
+                userId: 'manual-' + Date.now(),
+                studentId: 'manual-' + Date.now(),
+                userName: newCert.studentName, // using userName to match backend expectation
+                studentName: newCert.studentName, // sending both just in case
+                courseId: 'manual-' + Date.now(),
+                courseTitle: newCert.courseTitle,
+                grade: newCert.grade
+            });
+            setIsModalOpen(false);
+            setNewCert({ studentName: '', courseTitle: '', grade: 'Excellent' });
+            loadCertificates();
+        } catch (error) {
+            console.error('Failed to issue certificate:', error);
+            alert('فشل إصدار الشهادة');
+        }
     };
 
     const handlePrint = () => {

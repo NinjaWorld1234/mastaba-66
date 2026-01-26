@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    image: scientific-bench-app
+    container_name: scientific-bench
+    restart: always
+    ports:
+      - "3001:5000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - SECRET_KEY=change_this_in_production_to_a_secure_key

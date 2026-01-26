@@ -62,7 +62,9 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
   }, [setActiveTab]);
 
   // Get user's first name for greeting
-  const firstName = user?.name?.split(' ')[0] || 'User';
+  const firstName = (user && typeof user.name === 'string' && user.name.trim())
+    ? user.name.split(' ')[0]
+    : (t('sidebar.student') || 'User');
 
   return (
     <header className="flex items-center justify-between px-10 py-6 mb-2 relative z-20">
@@ -153,13 +155,20 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
         </div>
 
         {/* User Profile */}
-        <div className="flex items-center gap-3 pl-2 cursor-pointer group">
+        <div
+          className="flex items-center gap-3 pl-2 cursor-pointer group"
+          onClick={() => setActiveTab?.('profile')}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setActiveTab?.('profile')}
+          role="button"
+          tabIndex={0}
+          aria-label={t('sidebar.profile')}
+        >
           <div className="text-right hidden md:block">
             <p className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">
               {user?.name || 'User'}
             </p>
             <p className="text-[10px] text-gold-400 uppercase tracking-wider font-semibold">
-              {t('header.studentRole')}
+              {user?.role === 'admin' ? t('admin.adminPanel') : t('header.studentRole')}
             </p>
           </div>
           <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-br from-emerald-500 to-gold-500 relative">

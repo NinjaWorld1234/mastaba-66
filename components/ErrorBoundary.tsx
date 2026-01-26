@@ -7,10 +7,10 @@
  * @module components/ErrorBoundary
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
-interface Props {
+interface ErrorBoundaryProps {
     /** Child components to wrap */
     children: ReactNode;
     /** Optional fallback component */
@@ -19,7 +19,7 @@ interface Props {
     onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
-interface State {
+interface ErrorBoundaryState {
     /** Whether an error has been caught */
     hasError: boolean;
     /** The error that was caught */
@@ -36,21 +36,20 @@ interface State {
  *   <MyComponent />
  * </ErrorBoundary>
  */
-class ErrorBoundary extends Component<Props, State> {
-    state: State = {
-        hasError: false,
-        error: null,
-        errorInfo: null
-    };
-
-    constructor(props: Props) {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    constructor(props: ErrorBoundaryProps) {
         super(props);
+        this.state = {
+            hasError: false,
+            error: null,
+            errorInfo: null
+        };
     }
 
     /**
      * Update state when an error is thrown
      */
-    static getDerivedStateFromError(error: Error): Partial<State> {
+    static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
         return { hasError: true, error };
     }
 
@@ -64,7 +63,9 @@ class ErrorBoundary extends Component<Props, State> {
         console.error('ErrorBoundary caught an error:', error, errorInfo);
 
         // Call optional error handler
-        this.props.onError?.(error, errorInfo);
+        if (this.props.onError) {
+            this.props.onError(error, errorInfo);
+        }
     }
 
     /**

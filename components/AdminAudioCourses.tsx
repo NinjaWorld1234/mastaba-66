@@ -25,6 +25,8 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
         duration: '',
         category: 'Quran',
         status: 'published',
+        passingScore: 80,
+        quizFrequency: 3,
         thumbnail: 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=400&h=225&fit=crop'
     });
 
@@ -65,9 +67,12 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
             instructor: course.instructor,
             duration: course.duration,
             category: course.category,
-            status: 'published', // Assuming explicit status isn't in mock interface yet, defaulting
+            status: 'published',
             thumbnail: course.thumbnail,
-            videoUrl: course.videoUrl
+            videoUrl: course.videoUrl,
+            passingScore: course.passingScore || 80,
+            quizFrequency: course.quizFrequency || 0,
+            episodes: course.episodes || []
         });
         setIsModalOpen(true);
     };
@@ -84,8 +89,10 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
                     duration: courseForm.duration,
                     category: courseForm.category,
                     thumbnail: courseForm.thumbnail,
-                    videoUrl: courseForm.videoUrl
-                    // Add other fields as necessary
+                    videoUrl: courseForm.videoUrl,
+                    episodes: courseForm.episodes,
+                    passingScore: courseForm.passingScore,
+                    quizFrequency: courseForm.quizFrequency
                 });
             } else {
                 // Create new
@@ -103,9 +110,12 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
                     thumbnail: courseForm.thumbnail || '',
                     description: 'New Course Description',
                     descriptionEn: 'New Course Description',
-                    lessonsCount: 0,
+                    lessonsCount: courseForm.episodes?.length || 0,
                     studentsCount: 0,
-                    videoUrl: courseForm.videoUrl
+                    videoUrl: courseForm.videoUrl,
+                    episodes: courseForm.episodes || [],
+                    passingScore: courseForm.passingScore || 80,
+                    quizFrequency: courseForm.quizFrequency || 0
                 };
                 await api.addCourse(courseToAdd);
             }
@@ -137,7 +147,9 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
             category: 'Quran',
             status: 'published',
             thumbnail: 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=400&h=225&fit=crop',
-            videoUrl: ''
+            videoUrl: '',
+            passingScore: 80,
+            quizFrequency: 3
         });
         setIsModalOpen(true);
     };
@@ -308,138 +320,161 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSaveCourse} className="p-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm text-gray-300">{t('admin.title')}</label>
-                                    <input
-                                        required
-                                        value={courseForm.title}
-                                        onChange={e => setCourseForm({ ...courseForm, title: e.target.value })}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none"
-                                        placeholder="مثال: فقه الطهارة"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm text-gray-300">{t('admin.instructor')}</label>
-                                    <input
-                                        required
-                                        value={courseForm.instructor}
-                                        onChange={e => setCourseForm({ ...courseForm, instructor: e.target.value })}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none"
-                                        placeholder="مثال: الشيخ أحمد"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm text-gray-300">{t('admin.duration')}</label>
-                                    <input
-                                        value={courseForm.duration}
-                                        onChange={e => setCourseForm({ ...courseForm, duration: e.target.value })}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none"
-                                        placeholder="مثال: 5h 30m"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm text-gray-300">{t('admin.category')}</label>
-                                    <select
-                                        value={courseForm.category}
-                                        onChange={e => setCourseForm({ ...courseForm, category: e.target.value })}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none"
-                                    >
-                                        <option value="Fiqh">الفقه</option>
-                                        <option value="Quran">القرآن</option>
-                                        <option value="History">التاريخ</option>
-                                        <option value="Ethics">الأخلاق</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-sm text-gray-300">{t('admin.thumbnail')}</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        value={courseForm.thumbnail}
-                                        onChange={e => setCourseForm({ ...courseForm, thumbnail: e.target.value })}
-                                        className="flex-1 bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none text-sm font-mono"
-                                        placeholder="https://..."
-                                    />
-                                    <div className="w-12 h-12 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center overflow-hidden">
-                                        {courseForm.thumbnail ? <img src={courseForm.thumbnail} className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-gray-500" />}
+                        <form onSubmit={handleSaveCourse} className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-200px)] custom-scrollbar">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                                <section className="space-y-4">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">المعلومات الأساسية</h4>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-gray-300">{t('admin.title')}</label>
+                                        <input
+                                            required
+                                            value={courseForm.title}
+                                            onChange={e => setCourseForm({ ...courseForm, title: e.target.value })}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all"
+                                            placeholder="مثال: فقه الطهارة"
+                                        />
                                     </div>
-                                </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-gray-300">{t('admin.instructor')}</label>
+                                        <input
+                                            required
+                                            value={courseForm.instructor}
+                                            onChange={e => setCourseForm({ ...courseForm, instructor: e.target.value })}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all"
+                                            placeholder="مثال: الشيخ أحمد"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-gray-300">{t('admin.duration')}</label>
+                                            <input
+                                                value={courseForm.duration}
+                                                onChange={e => setCourseForm({ ...courseForm, duration: e.target.value })}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all placeholder:text-gray-600"
+                                                placeholder="5h 30m"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-gray-300">{t('admin.category')}</label>
+                                            <select
+                                                value={courseForm.category}
+                                                onChange={e => setCourseForm({ ...courseForm, category: e.target.value })}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all"
+                                            >
+                                                <option value="Fiqh">الفقه</option>
+                                                <option value="Quran">القرآن</option>
+                                                <option value="History">التاريخ</option>
+                                                <option value="Ethics">الأخلاق</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section className="space-y-4">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">إعدادات العرض والأداء</h4>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-gray-300">{t('admin.thumbnail')}</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={courseForm.thumbnail}
+                                                onChange={e => setCourseForm({ ...courseForm, thumbnail: e.target.value })}
+                                                className="flex-1 bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none text-xs font-mono transition-all"
+                                                placeholder="https://..."
+                                            />
+                                            <div className="w-12 h-12 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                {courseForm.thumbnail ? <img src={courseForm.thumbnail} className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-gray-500" />}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-gray-300">درجة النجاح</label>
+                                            <input
+                                                type="number"
+                                                value={courseForm.passingScore}
+                                                onChange={e => setCourseForm({ ...courseForm, passingScore: parseInt(e.target.value) })}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all"
+                                                min="0"
+                                                max="100"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-gray-300">تكرار الاختبار</label>
+                                            <input
+                                                type="number"
+                                                value={courseForm.quizFrequency}
+                                                onChange={e => setCourseForm({ ...courseForm, quizFrequency: parseInt(e.target.value) })}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all"
+                                                min="0"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-gray-300">الحالة</label>
+                                        <select
+                                            value={courseForm.status}
+                                            onChange={e => setCourseForm({ ...courseForm, status: e.target.value as CourseStatus })}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none transition-all"
+                                        >
+                                            <option value="published">منشور</option>
+                                            <option value="draft">مسودة</option>
+                                        </select>
+                                    </div>
+                                </section>
                             </div>
 
-                            <div className="space-y-4 border-t border-white/5 pt-4">
-                                <div className="flex justify-between items-center">
-                                    <h4 className="text-sm font-bold text-violet-400">محاضرات الدورة ({courseForm.episodes?.length || 0})</h4>
+                            <div className="space-y-4 border-t border-white/5 pt-6">
+                                <div className="flex justify-between items-center mb-1">
+                                    <div>
+                                        <h4 className="text-sm font-bold text-violet-400">محاضرات الدورة ({courseForm.episodes?.length || 0})</h4>
+                                        <p className="text-[10px] text-gray-500 italic">انقر على الاسم للتعديل</p>
+                                    </div>
                                     <button
                                         type="button"
                                         onClick={() => setIsR2PickerOpen(true)}
-                                        className="text-xs px-3 py-1.5 bg-violet-600/20 text-violet-400 border border-violet-500/30 rounded-lg hover:bg-violet-600/30 transition-all flex items-center gap-2"
+                                        className="text-xs px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl shadow-lg shadow-violet-600/20 transition-all flex items-center gap-2"
                                     >
-                                        <Plus className="w-3.5 h-3.5" />
-                                        <span>إضافة من R2</span>
+                                        <Plus className="w-4 h-4" />
+                                        <span>إضافة محاضرات</span>
                                     </button>
                                 </div>
 
-                                <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
                                     {courseForm.episodes?.map((ep, idx) => (
-                                        <div key={idx} className="flex gap-2 items-center bg-white/5 p-2 rounded-lg border border-white/5 group">
-                                            <div className="w-6 h-6 rounded bg-black/40 flex items-center justify-center text-[10px] text-gray-500 font-mono">
-                                                {idx + 1}
+                                        <div key={idx} className="flex gap-3 items-center bg-white/[0.03] p-3 rounded-xl border border-white/5 group hover:border-violet-500/40 hover:bg-white/[0.05] transition-all focus-within:border-violet-500/60 focus-within:bg-violet-500/5">
+                                            <div className="w-8 h-8 rounded-lg bg-black/40 flex items-center justify-center text-xs text-gray-400 font-bold font-mono group-focus-within:text-violet-400 transition-colors">
+                                                {String(idx + 1).padStart(2, '0')}
                                             </div>
-                                            <input
-                                                className="flex-1 bg-transparent border-none text-xs text-white focus:outline-none"
-                                                value={ep.title}
-                                                onChange={e => {
-                                                    const newEps = [...(courseForm.episodes || [])];
-                                                    newEps[idx].title = e.target.value;
-                                                    setCourseForm({ ...courseForm, episodes: newEps });
-                                                }}
-                                                placeholder="عنوان المحاضرة"
-                                            />
+                                            <div className="flex-1 flex items-center gap-3">
+                                                <Edit className="w-4 h-4 text-gray-600 group-hover:text-violet-400 group-focus-within:animate-pulse transition-colors" />
+                                                <input
+                                                    className="flex-1 bg-transparent border-none text-sm text-white focus:outline-none placeholder:text-gray-700 font-medium"
+                                                    value={ep.title}
+                                                    onChange={e => {
+                                                        const newEps = [...(courseForm.episodes || [])];
+                                                        newEps[idx].title = e.target.value;
+                                                        setCourseForm({ ...courseForm, episodes: newEps });
+                                                    }}
+                                                    placeholder="أدخل عنوان المحاضرة..."
+                                                />
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={() => {
                                                     const newEps = (courseForm.episodes || []).filter((_, i) => i !== idx);
                                                     setCourseForm({ ...courseForm, episodes: newEps });
                                                 }}
-                                                className="p-1 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
                                             >
-                                                <X className="w-3.5 h-3.5" />
+                                                <X className="w-4 h-4" />
                                             </button>
                                         </div>
                                     ))}
                                     {(!courseForm.episodes || courseForm.episodes.length === 0) && (
-                                        <div className="text-center py-6 border border-dashed border-white/10 rounded-xl text-gray-500 text-xs">
-                                            لم يتم إضافة أي محاضرات بعد.
+                                        <div className="text-center py-10 border-2 border-dashed border-white/5 rounded-2xl text-gray-500 text-sm bg-white/[0.01]">
+                                            لم يتم إضافة أي محاضرات بعد. اضغط على الزر أعلاه للبدء.
                                         </div>
                                     )}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm text-gray-300">درجة النجاح (%)</label>
-                                    <input
-                                        type="number"
-                                        value={courseForm.passingScore}
-                                        onChange={e => setCourseForm({ ...courseForm, passingScore: parseInt(e.target.value) })}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none"
-                                        min="0"
-                                        max="100"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm text-gray-300">الحالة</label>
-                                    <select
-                                        value={courseForm.status}
-                                        onChange={e => setCourseForm({ ...courseForm, status: e.target.value as CourseStatus })}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-violet-500 focus:outline-none"
-                                    >
-                                        <option value="published">منشور</option>
-                                        <option value="draft">مسودة</option>
-                                    </select>
                                 </div>
                             </div>
 
@@ -465,52 +500,54 @@ const AdminAudioCourses: React.FC<AdminAudioCoursesProps> = ({ onPreview }) => {
             )}
 
             {/* R2 File Picker Modal */}
-            {isR2PickerOpen && (
-                <ErrorBoundary>
-                    <R2FilePicker
-                        isOpen={isR2PickerOpen}
-                        onClose={() => setIsR2PickerOpen(false)}
-                        multiSelect={true}
-                        onSelect={(url) => {
-                            const newEp = {
-                                id: Date.now().toString(),
-                                courseId: courseForm.id || '',
-                                title: url.split('/').pop()?.replace(/%20/g, ' ') || 'محاضرة جديدة',
-                                videoUrl: url,
-                                orderIndex: (courseForm.episodes?.length || 0)
-                            };
-                            setCourseForm(prev => ({
-                                ...prev,
-                                episodes: [...(prev.episodes || []), newEp],
-                                videoUrl: url // Keep for backward compatibility or featured video
-                            }));
-                            setIsR2PickerOpen(false);
-                        }}
-                        onSelectMultiple={(urls) => {
-                            const newEps = urls.map((url, i) => ({
-                                id: (Date.now() + i).toString(),
-                                courseId: courseForm.id || '',
-                                title: url.split('/').pop()?.replace(/%20/g, ' ') || `محاضرة ${i + 1}`,
-                                videoUrl: url,
-                                orderIndex: (courseForm.episodes?.length || 0) + i
-                            }));
-                            // Sort by title (natural sort)
-                            const allEps = [...(courseForm.episodes || []), ...newEps].sort((a, b) =>
-                                a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
-                            );
-                            // Re-index
-                            allEps.forEach((ep, i) => ep.orderIndex = i);
+            {
+                isR2PickerOpen && (
+                    <ErrorBoundary>
+                        <R2FilePicker
+                            isOpen={isR2PickerOpen}
+                            onClose={() => setIsR2PickerOpen(false)}
+                            multiSelect={true}
+                            onSelect={(url) => {
+                                const newEp = {
+                                    id: Date.now().toString(),
+                                    courseId: courseForm.id || '',
+                                    title: url.split('/').pop()?.replace(/%20/g, ' ') || 'محاضرة جديدة',
+                                    videoUrl: url,
+                                    orderIndex: (courseForm.episodes?.length || 0)
+                                };
+                                setCourseForm(prev => ({
+                                    ...prev,
+                                    episodes: [...(prev.episodes || []), newEp],
+                                    videoUrl: url // Keep for backward compatibility or featured video
+                                }));
+                                setIsR2PickerOpen(false);
+                            }}
+                            onSelectMultiple={(urls) => {
+                                const newEps = urls.map((url, i) => ({
+                                    id: (Date.now() + i).toString(),
+                                    courseId: courseForm.id || '',
+                                    title: url.split('/').pop()?.replace(/%20/g, ' ') || `محاضرة ${i + 1}`,
+                                    videoUrl: url,
+                                    orderIndex: (courseForm.episodes?.length || 0) + i
+                                }));
+                                // Sort by title (natural sort)
+                                const allEps = [...(courseForm.episodes || []), ...newEps].sort((a, b) =>
+                                    a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
+                                );
+                                // Re-index
+                                allEps.forEach((ep, i) => ep.orderIndex = i);
 
-                            setCourseForm(prev => ({
-                                ...prev,
-                                episodes: allEps,
-                                videoUrl: urls[0] // Featured video
-                            }));
-                            setIsR2PickerOpen(false);
-                        }}
-                    />
-                </ErrorBoundary>
-            )}
+                                setCourseForm(prev => ({
+                                    ...prev,
+                                    episodes: allEps,
+                                    videoUrl: urls[0] // Featured video
+                                }));
+                                setIsR2PickerOpen(false);
+                            }}
+                        />
+                    </ErrorBoundary>
+                )
+            }
         </div >
     );
 };

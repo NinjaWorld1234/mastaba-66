@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Search, Video, Music, Loader2, CheckCircle2, FileVideo, Clock, HardDrive, RefreshCw, Folder, ChevronRight, ChevronLeft, Plus } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { X, Search, Video, Music, Loader2, CheckCircle2, FileVideo, Clock, HardDrive, RefreshCw, Folder, ChevronRight, ChevronLeft, Plus, Upload, Trash2, Edit3, FolderPlus, Check, MoreVertical } from 'lucide-react';
 import { useLanguage } from './LanguageContext';
+import { useToast } from './Toast';
 
 interface R2File {
     id: string;
@@ -25,14 +26,22 @@ interface R2FilePickerProps {
 }
 
 const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, onSelectMultiple, multiSelect = false }) => {
-    const { t } = useLanguage();
+    const toast = useToast();
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [files, setFiles] = useState<R2File[]>([]);
     const [folders, setFolders] = useState<R2Folder[]>([]);
     const [currentPrefix, setCurrentPrefix] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [uploadingProgress, setUploadingProgress] = useState<{ [key: string]: number }>({});
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+
+    // UI States for actions
+    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+    const [editingItem, setEditingItem] = useState<{ key: string, name: string, isFolder: boolean } | null>(null);
+    const [newItemName, setNewItemName] = useState('');
 
     const fetchFiles = useCallback(async (prefix: string = currentPrefix) => {
         setIsLoading(true);
@@ -103,6 +112,107 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
         });
     };
 
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = e.target.files;
+        if (!selectedFiles || selectedFiles.length === 0) return;
+
+        const { api } = await import('../services/api');
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+            const file = selectedFiles[i];
+            const fileId = `${Date.now()}-${file.name}`;
+
+            try {
+                setUploadingProgress(prev => ({ ...prev, [fileId]: 0 }));
+
+                // 1. Get pre-signed URL
+                const { uploadUrl } = await api.r2.getUploadUrl(
+                    currentPrefix + file.name,
+                    file.type
+                );
+
+                // 2. Upload directly to R2
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', uploadUrl, true);
+                xhr.setRequestHeader('Content-Type', file.type);
+
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        const percent = Math.round((event.loaded / event.total) * 100);
+                        setUploadingProgress(prev => ({ ...prev, [fileId]: percent }));
+                    }
+                };
+
+                const uploadPromise = new Promise((resolve, reject) => {
+                    xhr.onload = () => xhr.status === 200 ? resolve(xhr.response) : reject(new Error('Upload failed'));
+                    xhr.onerror = () => reject(new Error('Upload error'));
+                });
+
+                xhr.send(file);
+                await uploadPromise;
+
+                toast.success(`تم رفع ${file.name} بنجاح`);
+            } catch (err: any) {
+                console.error('Upload error:', err);
+                toast.error(`فشل رفع ${file.name}: ${err.message}`);
+            } finally {
+                setUploadingProgress(prev => {
+                    const next = { ...prev };
+                    delete next[fileId];
+                    return next;
+                });
+            }
+        }
+
+        fetchFiles();
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDelete = async (key: string, name: string) => {
+        if (!window.confirm(`هل أنت متأكد من حذف "${name}"؟`)) return;
+
+        try {
+            const { api } = await import('../services/api');
+            await api.r2.deleteFile(key);
+            toast.success('تم الحذف بنجاح');
+            fetchFiles();
+        } catch (err: any) {
+            toast.error(`فشل الحذف: ${err.message}`);
+        }
+    };
+
+    const handleRename = async () => {
+        if (!editingItem || !newItemName.trim()) return;
+
+        try {
+            const { api } = await import('../services/api');
+            const oldKey = editingItem.key;
+            const newKey = currentPrefix + newItemName.trim() + (editingItem.isFolder ? '/' : '');
+
+            await api.r2.renameFile(oldKey, newKey);
+            toast.success('تمت إعادة التسمية بنجاح');
+            setEditingItem(null);
+            fetchFiles();
+        } catch (err: any) {
+            toast.error(`فشل إعادة التسمية: ${err.message}`);
+        }
+    };
+
+    const handleCreateFolder = async () => {
+        if (!newFolderName.trim()) return;
+
+        try {
+            const { api } = await import('../services/api');
+            await api.r2.createFolder(currentPrefix + newFolderName.trim() + '/');
+            toast.success('تم إنشاء المجلد بنجاح');
+            setIsCreatingFolder(false);
+            setNewFolderName('');
+            fetchFiles();
+        } catch (err: any) {
+            toast.error(`فشل إنشاء المجلد: ${err.message}`);
+        }
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -163,6 +273,29 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
                     </div>
 
                     <div className="flex gap-2">
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleUpload}
+                            className="hidden"
+                            multiple
+                        />
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2.5 rounded-xl bg-violet-600/20 text-violet-400 border border-violet-500/30 hover:bg-violet-600/30 transition-all"
+                            title="رفع ملفات"
+                        >
+                            <Upload className="w-5 h-5" />
+                        </button>
+
+                        <button
+                            onClick={() => setIsCreatingFolder(true)}
+                            className="p-2.5 rounded-xl bg-amber-600/20 text-amber-400 border border-amber-500/30 hover:bg-amber-600/30 transition-all"
+                            title="مجلد جديد"
+                        >
+                            <FolderPlus className="w-5 h-5" />
+                        </button>
+
                         {currentPrefix && (
                             <button
                                 onClick={handleGoUp}
@@ -205,6 +338,23 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
                     </div>
                 </div>
 
+                {/* Uploads progress bar */}
+                {Object.keys(uploadingProgress).length > 0 && (
+                    <div className="px-6 py-2 bg-violet-500/10 border-b border-violet-500/20 flex flex-col gap-2">
+                        {Object.entries(uploadingProgress).map(([fileName, progress]) => (
+                            <div key={fileName} className="flex flex-col gap-1">
+                                <div className="flex justify-between text-[10px] text-violet-300">
+                                    <span className="truncate max-w-[200px]">{fileName.split('-').slice(1).join('-')}</span>
+                                    <span>{progress}%</span>
+                                </div>
+                                <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden">
+                                    <div className="h-full bg-violet-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar min-h-[400px]">
                     {isLoading ? (
@@ -223,23 +373,85 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                            {/* New Folder Creation UI */}
+                            {isCreatingFolder && (
+                                <div className="glass-panel p-4 rounded-2xl border border-amber-500/50 bg-amber-500/5 flex gap-4 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="w-14 h-14 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                                        <Folder className="w-7 h-7 text-amber-500" />
+                                    </div>
+                                    <div className="flex-1 flex flex-col gap-2">
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            placeholder="اسم المجلد الجديد..."
+                                            value={newFolderName}
+                                            onChange={(e) => setNewFolderName(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+                                            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button onClick={handleCreateFolder} className="text-[10px] px-3 py-1 bg-amber-600 text-white rounded-md">إنشاء</button>
+                                            <button onClick={() => setIsCreatingFolder(false)} className="text-[10px] px-3 py-1 bg-white/5 text-gray-400 rounded-md">إلغاء</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Folders */}
                             {folders.map((folder, idx) => (
                                 <div
                                     key={`folder-${idx}`}
-                                    onClick={() => handleFolderClick(folder.path)}
-                                    className="group glass-panel p-4 rounded-2xl transition-all cursor-pointer flex gap-4 border border-white/5 hover:border-violet-500/50 bg-white/[0.02]"
+                                    className="group glass-panel p-4 rounded-2xl transition-all flex gap-4 border border-white/5 hover:border-violet-500/50 bg-white/[0.02] relative"
                                 >
-                                    <div className="w-14 h-14 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-500/20 transition-colors">
+                                    <div
+                                        onClick={() => handleFolderClick(folder.path)}
+                                        className="w-14 h-14 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-500/20 transition-colors cursor-pointer"
+                                    >
                                         <Folder className="w-7 h-7 text-amber-500" />
                                     </div>
-                                    <div className="flex-1 min-w-0 flex items-center">
-                                        <h4 className="font-bold text-white truncate text-sm" title={folder.name}>
-                                            {folder.name.split('/').filter(Boolean).pop()}
-                                        </h4>
+                                    <div className="flex-1 min-w-0 flex flex-col justify-center cursor-pointer" onClick={() => handleFolderClick(folder.path)}>
+                                        {editingItem?.key === folder.path ? (
+                                            <input
+                                                autoFocus
+                                                className="bg-black/60 border border-violet-500 rounded px-2 py-1 text-sm text-white"
+                                                value={newItemName}
+                                                onChange={e => setNewItemName(e.target.value)}
+                                                onBlur={handleRename}
+                                                onKeyDown={e => e.key === 'Enter' && handleRename()}
+                                                onClick={e => e.stopPropagation()}
+                                            />
+                                        ) : (
+                                            <h4 className="font-bold text-white truncate text-sm" title={folder.name}>
+                                                {folder.name.split('/').filter(Boolean).pop()}
+                                            </h4>
+                                        )}
                                     </div>
-                                    <div className="flex items-center text-gray-400 group-hover:text-white transition-colors">
-                                        <ChevronLeft className="w-5 h-5 rtl:rotate-0 rotate-180" />
+
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const name = folder.name.split('/').filter(Boolean).pop() || '';
+                                                setEditingItem({ key: folder.path, name, isFolder: true });
+                                                setNewItemName(name);
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-violet-400"
+                                        >
+                                            <Edit3 className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(folder.path, folder.name);
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+
+                                    <div className="flex items-center text-gray-400 group-hover:text-white transition-colors ml-1">
+                                        <ChevronLeft className="w-4 h-4 rtl:rotate-0 rotate-180" />
                                     </div>
                                 </div>
                             ))}
@@ -248,39 +460,90 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
                             {filteredFiles.map((file) => (
                                 <div
                                     key={file.id}
-                                    onClick={() => {
-                                        if (multiSelect) {
-                                            setSelectedUrls(prev => {
-                                                const next = new Set(prev);
-                                                if (next.has(file.url)) next.delete(file.url);
-                                                else next.add(file.url);
-                                                return new Set(next);
-                                            });
-                                        } else {
-                                            onSelect(file.url);
-                                            onClose();
-                                        }
-                                    }}
-                                    className={`group glass-panel p-4 rounded-2xl transition-all cursor-pointer flex gap-4 overflow-hidden relative border bg-white/[0.02] ${selectedUrls.has(file.url) ? 'border-violet-500 bg-violet-500/5' : 'border-white/5 hover:border-violet-500/50'}`}
+                                    className={`group glass-panel p-4 rounded-2xl transition-all flex gap-4 overflow-hidden relative border bg-white/[0.02] ${selectedUrls.has(file.url) ? 'border-violet-500 bg-violet-500/5' : 'border-white/5 hover:border-violet-500/50'}`}
                                 >
-                                    <div className="w-14 h-14 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-violet-500/20 transition-colors">
+                                    <div
+                                        onClick={() => {
+                                            if (multiSelect) {
+                                                setSelectedUrls(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(file.url)) next.delete(file.url);
+                                                    else next.add(file.url);
+                                                    return new Set(next);
+                                                });
+                                            } else {
+                                                onSelect(file.url);
+                                                onClose();
+                                            }
+                                        }}
+                                        className="w-14 h-14 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-violet-500/20 transition-colors cursor-pointer"
+                                    >
                                         {file.fullName.toLowerCase().endsWith('.mp3') || file.fullName.toLowerCase().endsWith('.wav') ? (
                                             <Music className="w-7 h-7 text-violet-400" />
                                         ) : (
                                             <FileVideo className="w-7 h-7 text-violet-400" />
                                         )}
                                     </div>
-                                    <div className="flex-1 min-w-0 pr-1">
-                                        <h4 className="font-bold text-white truncate text-sm mb-1" title={file.name}>
-                                            {file.name}
-                                        </h4>
+                                    <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center cursor-pointer"
+                                        onClick={() => {
+                                            if (multiSelect) {
+                                                setSelectedUrls(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(file.url)) next.delete(file.url);
+                                                    else next.add(file.url);
+                                                    return new Set(next);
+                                                });
+                                            } else {
+                                                onSelect(file.url);
+                                                onClose();
+                                            }
+                                        }}
+                                    >
+                                        {editingItem?.key === file.fullName ? (
+                                            <input
+                                                autoFocus
+                                                className="bg-black/60 border border-violet-500 rounded px-2 py-1 text-sm text-white mb-1"
+                                                value={newItemName}
+                                                onChange={e => setNewItemName(e.target.value)}
+                                                onBlur={handleRename}
+                                                onKeyDown={e => e.key === 'Enter' && handleRename()}
+                                                onClick={e => e.stopPropagation()}
+                                            />
+                                        ) : (
+                                            <h4 className="font-bold text-white truncate text-sm mb-1" title={file.name}>
+                                                {file.name}
+                                            </h4>
+                                        )}
                                         <div className="flex items-center gap-3 text-[10px] text-gray-500">
                                             <span className="flex items-center gap-1"><HardDrive className="w-3 h-3" />{formatSize(file.size)}</span>
                                             <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(file.lastModified)}</span>
                                         </div>
                                     </div>
-                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-opacity ${selectedUrls.has(file.url) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                                        <CheckCircle2 className={`w-6 h-6 ${selectedUrls.has(file.url) ? 'text-violet-500' : 'text-emerald-500'}`} />
+
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingItem({ key: file.fullName, name: file.name, isFolder: false });
+                                                setNewItemName(file.name);
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-violet-400"
+                                        >
+                                            <Edit3 className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(file.fullName, file.name);
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+
+                                    <div className={`ml-2 transition-opacity ${selectedUrls.has(file.url) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                                        <CheckCircle2 className={`w-5 h-5 ${selectedUrls.has(file.url) ? 'text-violet-500' : 'text-emerald-500'}`} />
                                     </div>
                                 </div>
                             ))}

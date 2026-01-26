@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { LanguageProvider } from './components/LanguageContext';
 import { ThemeProvider, useTheme } from './components/ThemeContext';
 import { AuthProvider, useAuth } from './components/AuthContext';
@@ -22,6 +23,8 @@ import { SkeletonDashboard } from './components/Skeleton';
 import InstallPrompt from './components/InstallPrompt';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import CoursesGrid from './components/CoursesGrid';
+import { ProtectedRoute, AdminRoute, PublicRoute } from './components/RouteGuards';
 import { Course } from './types';
 
 // ============================================================================
@@ -118,31 +121,23 @@ type AuthType = 'login' | 'signup';
  * Separated from App to use hooks inside provider
  */
 const AppContent: React.FC = () => {
-  // App Content Component logic
-  const { user, isAuthenticated, isLoading, logout, login, checkSession, setUser } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, login, checkSession } = useAuth();
   const { isDark } = useTheme();
   const toast = useToast();
-  const [viewState, setViewState] = useState<ViewState>('landing');
-  const [authType, setAuthType] = useState<AuthType>('login');
-  const [activeTab, setActiveTabOriginal] = useState('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
-  const [previousTab, setPreviousTab] = useState<string>('dashboard');
-  const [isPending, startTransition] = React.useTransition();
   const [pendingEmail, setPendingEmail] = useState<string>('');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Optimized tab switcher to prevent flickering
-  const setActiveTab = React.useCallback((tab: string | ((prev: string) => string)) => {
-    startTransition(() => {
-      // Handle both function update and direct value
-      if (typeof tab === 'function') {
-        setActiveTabOriginal(prev => tab(prev));
-      } else {
-        setActiveTabOriginal(tab);
-      }
-    });
-  }, []);
+  // Derive active tab from URL
+  const activeTab = location.pathname.split('/').pop() || 'dashboard';
+
+  const setActiveTab = React.useCallback((tab: string) => {
+    navigate(`/${tab}`);
+  }, [navigate]);
 
   const handleOpenChat = React.useCallback((userId: string) => {
     setSelectedConversationId(userId);
@@ -151,21 +146,19 @@ const AppContent: React.FC = () => {
 
   // Sync view state with authentication state
   useEffect(() => {
-    if (isAuthenticated) {
-      setViewState('app');
-    } else if (viewState === 'app') {
-      setViewState('landing');
+    if (isAuthenticated && (location.pathname === '/' || location.pathname === '/login' || location.pathname === '/signup')) {
+      navigate('/dashboard', { replace: true });
     }
-  }, [isAuthenticated, viewState]);
+  }, [isAuthenticated, location.pathname, navigate]);
 
   // Check for pending verification on mount
   useEffect(() => {
     const pendingVerificationEmail = localStorage.getItem('pendingVerificationEmail');
-    if (pendingVerificationEmail && !isAuthenticated) {
+    if (pendingVerificationEmail && !isAuthenticated && location.pathname !== '/verify') {
       setPendingEmail(pendingVerificationEmail);
-      setViewState('verification');
+      navigate('/verify');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, location.pathname, navigate]);
 
   // Poll for unread messages
   useEffect(() => {
@@ -174,15 +167,9 @@ const AppContent: React.FC = () => {
     const fetchUnread = async () => {
       try {
         const { api } = await import('./services/api');
-        const msgs = await api.getMessages();
-        const currentUser = api.getCurrentUser();
-
-        if (currentUser && Array.isArray(msgs)) {
-          // Count unread messages received by the current user
-          // For admins, this counts messages sent to them (or via SUPPORT routing)
-          const count = msgs.filter((m: any) => m.read === 0 && m.receiverId === currentUser.id).length;
-          setUnreadCount(count);
-        }
+        // Use optimized endpoint
+        const count = await api.getUnreadCount();
+        setUnreadCount(count);
       } catch (error) {
         console.error("Failed to fetch unread messages", error);
       }
@@ -193,180 +180,76 @@ const AppContent: React.FC = () => {
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
-  // Preload route code on hover - MUST be before any conditional returns
-  const preloadRoute = React.useCallback((tabId: string) => {
-    const role = user?.role || 'student';
-    let importFn;
-
-    // Map tab IDs to route imports based on role
-    if (role === 'admin') {
-      const adminMap: Record<string, () => Promise<any>> = {
-        'dashboard': ROUTE_IMPORTS['admin-dashboard'],
-        'students': ROUTE_IMPORTS['admin-students'],
-        'audio-courses': ROUTE_IMPORTS['admin-audio-courses'],
-        'reports': ROUTE_IMPORTS['admin-reports'],
-        'content': ROUTE_IMPORTS['admin-content'],
-        'announcements': ROUTE_IMPORTS['admin-announcements'],
-        'quizzes': ROUTE_IMPORTS['admin-quizzes'],
-        'activity-log': ROUTE_IMPORTS['admin-activity-log'],
-        'certificates-admin': ROUTE_IMPORTS['admin-certificates'],
-        'backup': ROUTE_IMPORTS['admin-backup'],
-        'settings': ROUTE_IMPORTS.settings,
-        'messages': ROUTE_IMPORTS.messages
-      };
-      importFn = adminMap[tabId];
-    } else {
-      const studentMap: Record<string, () => Promise<any>> = {
-        'dashboard': ROUTE_IMPORTS.dashboard,
-        'community': ROUTE_IMPORTS.community,
-        'library': ROUTE_IMPORTS.library,
-        'settings': ROUTE_IMPORTS.settings,
-        'courses': () => Promise.resolve(),
-        'certificates': ROUTE_IMPORTS.certificates,
-        'quiz': ROUTE_IMPORTS.quiz,
-        'profile': ROUTE_IMPORTS.profile,
-        'daily-tracking': ROUTE_IMPORTS["daily-tracking"],
-        'notifications': ROUTE_IMPORTS.notifications,
-        'favorites': ROUTE_IMPORTS.favorites,
-        'progress': ROUTE_IMPORTS.progress,
-        'search': ROUTE_IMPORTS.search,
-        'messages': ROUTE_IMPORTS.messages
-      };
-      importFn = studentMap[tabId];
-    }
-
-    if (importFn) {
-      importFn();
-    }
-  }, [user]);
+  // Preloading logic moved to AppLayout
 
   /**
    * Handles playing a course - navigates to player view
    */
   const handlePlayCourse = (course: Course): void => {
-    setPreviousTab(activeTab); // Remember where we came from
     setActiveCourse(course);
-    setActiveTab('player');
+    navigate(`/player/${course.id}`);
   };
 
   /**
    * Handles returning to previous tab from player
    */
   const handleBackToDashboard = (): void => {
-    startTransition(() => {
-      setActiveCourse(null);
-      setActiveTab(previousTab);
-    });
+    setActiveCourse(null);
+    navigate(-1); // Go back
   };
 
   /**
    * Handles user logout
    */
   const handleLogout = (): void => {
-    startTransition(() => {
-      logout();
-      setViewState('landing');
-      setActiveTab('dashboard');
-      setActiveCourse(null);
-    });
-  };
-
-  /**
-   * Renders admin-specific content based on active tab
-   */
-  const renderAdminContent = (): React.ReactNode => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <AdminDashboard setActiveTab={setActiveTab} />;
-      case 'students':
-        // We pass handleOpenChat so AdminStudents can open a specific conversation
-        return <AdminStudents onOpenChat={handleOpenChat} />;
-      case 'audio-courses':
-        return <AdminAudioCourses onPreview={(course) => {
-          setPreviousTab('audio-courses');
-          setActiveCourse(course);
-          setActiveTab('player');
-        }} />;
-      case 'reports':
-        return <AdminReports />;
-      case 'content':
-        return <AdminContentManagement />;
-      case 'announcements':
-        return <AdminAnnouncements />;
-      case 'quizzes':
-        return <AdminQuizManagement />;
-      case 'activity-log':
-        return <AdminActivityLog />;
-      case 'certificates-admin':
-        return <AdminCertificateManagement />;
-      case 'backup':
-        return <AdminBackupSettings />;
-      case 'settings':
-        return <Settings />;
-      case 'messages':
-        return <MessagingSystem initialSelectedUserId={selectedConversationId} />;
-      default:
-        return (
-          <div className="flex items-center justify-center h-64 text-gray-400">
-            Admin Page: {activeTab} (Coming Soon)
-          </div>
-        );
-    }
-  };
-
-  /**
-   * Renders student-specific content based on active tab
-   */
-  const renderStudentContent = (): React.ReactNode => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard onPlayCourse={handlePlayCourse} setActiveTab={setActiveTab} />;
-      case 'community':
-        return <Community />;
-      case 'library':
-        return <Library />;
-      case 'settings':
-        return <Settings />;
-      case 'courses':
-        return <CoursesGrid onPlayCourse={handlePlayCourse} />;
-      case 'certificates':
-        return <StudentCertificates />;
-      case 'quiz':
-        return <Quiz />;
-      case 'profile':
-        return <Profile />;
-      case 'daily-tracking':
-        return <DailyTracking />;
-      case 'notifications':
-        return <Notifications />;
-      case 'favorites':
-        return <Favorites />;
-      case 'progress':
-        return <PersonalProgress />;
-      case 'search':
-        return <Search />;
-      case 'messages':
-        return <MessagingSystem />;
-      default:
-        return (
-          <div className="flex items-center justify-center h-64 text-gray-400">
-            قريباً...
-          </div>
-        );
-    }
+    logout();
+    navigate('/');
+    setActiveCourse(null);
   };
 
   /**
    * Main content renderer - handles player and role-based routing
    */
-  const renderContent = (): React.ReactNode => {
-    // Player view (both roles)
-    if (activeTab === 'player' && activeCourse) {
-      return <Player course={activeCourse} onBack={handleBackToDashboard} />;
-    }
+  const AppRoutes: React.FC = () => {
+    return (
+      <Routes>
+        {/* Student Routes */}
+        <Route path="/dashboard" element={<Dashboard onPlayCourse={handlePlayCourse} setActiveTab={setActiveTab} unreadCount={unreadCount} />} />
+        <Route path="/community" element={<Community />} />
+        <Route path="/library" element={<Library />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/courses" element={<CoursesGrid onPlayCourse={handlePlayCourse} />} />
+        <Route path="/certificates" element={<StudentCertificates />} />
+        <Route path="/quiz" element={<Quiz />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/daily-tracking" element={<DailyTracking />} />
+        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/favorites" element={<Favorites />} />
+        <Route path="/progress" element={<PersonalProgress />} />
+        <Route path="/search" element={<Search />} />
+        <Route path="/messages" element={<MessagingSystem />} />
 
-    const role = user?.role || 'student';
-    return role === 'admin' ? renderAdminContent() : renderStudentContent();
+        {/* Player (Dynamic ID) */}
+        <Route path="/player/:courseId" element={
+          activeCourse ? <Player course={activeCourse} onBack={handleBackToDashboard} /> : <Navigate to="/dashboard" />
+        } />
+
+        {/* Admin Routes */}
+        <Route path="/admin" element={<AdminRoute><AdminDashboard setActiveTab={setActiveTab} /></AdminRoute>} />
+        <Route path="/admin/students" element={<AdminRoute><AdminStudents onOpenChat={handleOpenChat} /></AdminRoute>} />
+        <Route path="/admin/audio-courses" element={<AdminRoute><AdminAudioCourses onPreview={handlePlayCourse} /></AdminRoute>} />
+        <Route path="/admin/reports" element={<AdminRoute><AdminReports /></AdminRoute>} />
+        <Route path="/admin/content" element={<AdminRoute><AdminContentManagement /></AdminRoute>} />
+        <Route path="/admin/announcements" element={<AdminRoute><AdminAnnouncements /></AdminRoute>} />
+        <Route path="/admin/quizzes" element={<AdminRoute><AdminQuizManagement /></AdminRoute>} />
+        <Route path="/admin/activity-log" element={<AdminRoute><AdminActivityLog /></AdminRoute>} />
+        <Route path="/admin/certificates" element={<AdminRoute><AdminCertificateManagement /></AdminRoute>} />
+        <Route path="/admin/backup" element={<AdminRoute><AdminBackupSettings /></AdminRoute>} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    );
   };
 
   // ========================================================================
@@ -377,106 +260,164 @@ const AppContent: React.FC = () => {
   }
 
   // ========================================================================
-  // Landing Page View
+  // Root Router Return
   // ========================================================================
-  if (viewState === 'landing') {
-    return (
-      <Suspense fallback={<LoadingSpinner fullScreen />}>
-        <LandingPage
-          onLoginClick={() => {
-            setAuthType('login');
-            setViewState('auth');
-          }}
-          onSignupClick={() => {
-            setViewState('registration');
-          }}
-          onQuickLogin={async (role) => {
-            // Quick login with correct credentials
-            const email = role === 'admin' ? 'admin@example.com' : 'ahmed@example.com';
-            const password = role === 'admin' ? 'admin123' : '123456';
-            try {
-              const success = await login(email, password);
-              if (success) {
-                setViewState('app');
-                setActiveTab('dashboard');
-              } else {
-                toast.error('فشل تسجيل الدخول السريع. جرب الدخول يدوياً.');
+  return (
+    <Routes>
+      <Route path="/" element={
+        <PublicRoute>
+          <LandingPage
+            onLoginClick={() => navigate('/login')}
+            onSignupClick={() => navigate('/signup')}
+            onQuickLogin={async (role) => {
+              const email = role === 'admin' ? 'admin@example.com' : 'ahmed@example.com';
+              const password = role === 'admin' ? 'admin123' : '123456';
+              try {
+                const success = await login(email, password);
+                if (success) navigate('/dashboard');
+                else toast.error('فشل تسجيل الدخول السريع.');
+              } catch (e) {
+                toast.error('فشل تسجيل الدخول السريع.');
               }
-            } catch (e) {
-              toast.error('فشل تسجيل الدخول السريع.');
-            }
-          }}
-        />
-        <InstallPrompt />
-      </Suspense>
-    );
-  }
+            }}
+          />
+          <InstallPrompt />
+        </PublicRoute>
+      } />
 
-  // ========================================================================
-  // Auth View
-  // ========================================================================
-  if (viewState === 'auth') {
-    return (
-      <Suspense fallback={<LoadingSpinner fullScreen />}>
-        <Auth
-          initialView={authType}
-          onToggleView={setAuthType}
-          onBack={() => setViewState('landing')}
-          onLoginSuccess={() => {
-            setViewState('app');
-            setActiveTab('dashboard');
-          }}
-          onVerificationRequired={(email) => {
-            setPendingEmail(email);
-            setViewState('verification');
-          }}
-        />
-      </Suspense>
-    );
-  }
+      <Route path="/login" element={
+        <PublicRoute>
+          <Auth
+            initialView="login"
+            onToggleView={(view) => navigate(view === 'login' ? '/login' : '/signup')}
+            onBack={() => navigate('/')}
+            onLoginSuccess={() => navigate('/dashboard')}
+            onVerificationRequired={(email) => {
+              setPendingEmail(email);
+              navigate('/verify');
+            }}
+          />
+        </PublicRoute>
+      } />
 
-  // ========================================================================
-  // Registration View
-  // ========================================================================
-  if (viewState === 'registration') {
-    return (
-      <Suspense fallback={<LoadingSpinner fullScreen />}>
-        <RegistrationForm
-          onBack={() => setViewState('landing')}
-          onSuccess={(email) => {
-            setPendingEmail(email);
-            setViewState('verification');
-          }}
-        />
-      </Suspense>
-    );
-  }
+      <Route path="/signup" element={
+        <PublicRoute>
+          <RegistrationForm
+            onBack={() => navigate('/')}
+            onSuccess={(email) => {
+              setPendingEmail(email);
+              navigate('/verify');
+            }}
+          />
+        </PublicRoute>
+      } />
 
-  // ========================================================================
-  // Email Verification View
-  // ========================================================================
-  if (viewState === 'verification') {
-    return (
-      <Suspense fallback={<LoadingSpinner fullScreen />}>
+      <Route path="/verify" element={
         <EmailVerification
           email={pendingEmail}
           onSuccess={() => {
             localStorage.removeItem('pendingVerificationEmail');
-            checkSession().then(() => {
-              setViewState('app');
-              setActiveTab('dashboard');
-            });
+            checkSession().then(() => navigate('/dashboard'));
           }}
           onBack={() => {
             localStorage.removeItem('pendingVerificationEmail');
             localStorage.removeItem('authToken');
             setPendingEmail('');
-            setViewState('registration');
+            navigate('/signup');
           }}
         />
-      </Suspense>
-    );
-  }
+      } />
+
+      {/* Main App Layout */}
+      <Route path="/*" element={
+        <ProtectedRoute>
+          <AppLayout
+            activeCourse={activeCourse}
+            handlePlayCourse={handlePlayCourse}
+            handleBackToDashboard={handleBackToDashboard}
+            handleOpenChat={handleOpenChat}
+            selectedConversationId={selectedConversationId}
+          />
+        </ProtectedRoute>
+      } />
+    </Routes>
+  );
+};
+
+interface AppLayoutProps {
+  activeCourse: Course | null;
+  handlePlayCourse: (course: Course) => void;
+  handleBackToDashboard: () => void;
+  handleOpenChat: (userId: string) => void;
+  selectedConversationId: string | null;
+}
+
+const AppLayout: React.FC<AppLayoutProps> = ({
+  activeCourse,
+  handlePlayCourse,
+  handleBackToDashboard,
+  handleOpenChat,
+  selectedConversationId
+}) => {
+  const { user, logout, isAuthenticated } = useAuth();
+  const { isDark } = useTheme();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Correctly derive active tab and role prefix
+  const pathSegments = pathname.split('/').filter(Boolean);
+  const isAdminPath = pathSegments[0] === 'admin';
+  const activeTab = isAdminPath
+    ? (pathSegments[1] || 'dashboard')
+    : (pathSegments[0] || 'dashboard');
+
+  const setActiveTab = React.useCallback((tab: string) => {
+    // Routes that are shared between all roles and should not be prefixed
+    const sharedRoutes = ['settings', 'profile', 'notifications', 'search', 'messages'];
+
+    if (sharedRoutes.includes(tab)) {
+      navigate(`/${tab}`);
+      return;
+    }
+
+    if (user?.role === 'admin') {
+      // Special case for admin dashboard
+      if (tab === 'dashboard') {
+        navigate('/admin');
+      } else {
+        navigate(`/admin/${tab}`);
+      }
+    } else {
+      navigate(`/${tab}`);
+    }
+  }, [navigate, user?.role]);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
+  const preloadRoute = (tab: string) => {
+    // Optional: Add preloading logic here if needed
+  };
+
+  // Poll for unread messages (duplicated from AppContent or moved here)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchUnread = async () => {
+      try {
+        const { api } = await import('./services/api');
+        const count = await api.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error("Failed to fetch unread messages", error);
+      }
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 10000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
 
   // ========================================================================
   // Main App View
@@ -520,7 +461,44 @@ const AppContent: React.FC = () => {
         >
           <RouteErrorBoundary>
             <Suspense fallback={<SkeletonDashboard />}>
-              {renderContent()}
+              <Routes>
+                {/* Student Routes */}
+                <Route path="/dashboard" element={<Dashboard onPlayCourse={handlePlayCourse} setActiveTab={setActiveTab} unreadCount={unreadCount} />} />
+                <Route path="/community" element={<Community />} />
+                <Route path="/library" element={<Library />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/courses" element={<CoursesGrid onPlayCourse={handlePlayCourse} />} />
+                <Route path="/certificates" element={<StudentCertificates />} />
+                <Route path="/quiz" element={<Quiz />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/daily-tracking" element={<DailyTracking />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/favorites" element={<Favorites />} />
+                <Route path="/progress" element={<PersonalProgress />} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/messages" element={<MessagingSystem initialSelectedUserId={selectedConversationId} />} />
+
+                {/* Player (Dynamic ID) */}
+                <Route path="/player/:courseId" element={
+                  activeCourse ? <Player course={activeCourse} onBack={handleBackToDashboard} /> : <Navigate to="/dashboard" />
+                } />
+
+                {/* Admin Routes */}
+                <Route path="/admin" element={<AdminRoute><AdminDashboard setActiveTab={setActiveTab} /></AdminRoute>} />
+                <Route path="/admin/students" element={<AdminRoute><AdminStudents onOpenChat={handleOpenChat} /></AdminRoute>} />
+                <Route path="/admin/audio-courses" element={<AdminRoute><AdminAudioCourses onPreview={handlePlayCourse} /></AdminRoute>} />
+                <Route path="/admin/reports" element={<AdminRoute><AdminReports /></AdminRoute>} />
+                <Route path="/admin/content" element={<AdminRoute><AdminContentManagement /></AdminRoute>} />
+                <Route path="/admin/announcements" element={<AdminRoute><AdminAnnouncements /></AdminRoute>} />
+                <Route path="/admin/quizzes" element={<AdminRoute><AdminQuizManagement /></AdminRoute>} />
+                <Route path="/admin/activity-log" element={<AdminRoute><AdminActivityLog /></AdminRoute>} />
+                <Route path="/admin/certificates" element={<AdminRoute><AdminCertificateManagement /></AdminRoute>} />
+                <Route path="/admin/backup" element={<AdminRoute><AdminBackupSettings /></AdminRoute>} />
+                <Route path="/admin/messages" element={<AdminRoute><MessagingSystem /></AdminRoute>} />
+
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
             </Suspense>
           </RouteErrorBoundary>
         </div>
@@ -529,95 +507,7 @@ const AppContent: React.FC = () => {
   );
 };
 
-// ============================================================================
-// Courses Grid Component (Extracted for cleaner code)
-// ============================================================================
 
-interface CoursesGridProps {
-  onPlayCourse: (course: Course) => void;
-}
-
-/**
- * Grid display of all available courses
- */
-/**
- * Grid display of all available courses
- */
-const CoursesGrid: React.FC<CoursesGridProps> = React.memo(({ onPlayCourse }) => {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const loadCourses = async () => {
-      try {
-        // Dynamic import to avoid circular dependency if api depends on types which is fine, 
-        // but let's import api directly at top if possible, or here.
-        // Since api is already imported in many places, we should check imports. 
-        // App.tsx doesn't import api yet. We need to add it.
-        const { api } = await import('./services/api');
-        const data = await api.getCourses();
-        setCourses(data);
-      } catch (error) {
-        console.error("Failed to load courses", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadCourses();
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
-  return (
-    <div className="animate-fade-in relative z-10">
-      <div className="flex justify-between items-end mb-8">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">دوراتي</h2>
-          <p className="text-gray-200">تابع تقدمك التعليمي</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courses.map(course => (
-          <div
-            key={course.id}
-            onClick={() => onPlayCourse(course)}
-            className="glass-panel p-0 rounded-2xl overflow-hidden cursor-pointer group hover:border-emerald-500/50 transition-all bg-white/5 hover:bg-white/10"
-          >
-            <div className="h-48 relative">
-              <img
-                src={course.thumbnail}
-                className="w-full h-full object-cover"
-                alt={course.title}
-                loading="lazy"
-              />
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                <span className="px-4 py-2 bg-emerald-600 rounded-lg text-sm font-bold">
-                  ابدأ التعلم
-                </span>
-              </div>
-            </div>
-            <div className="p-5">
-              <h3 className="font-bold text-lg text-white mb-1">{course.title}</h3>
-              <p className="text-sm text-gray-300 mb-4">{course.instructor}</p>
-              <div className="flex items-center justify-between text-xs text-emerald-300 font-bold">
-                <span>{course.duration}</span>
-                <span>{course.category}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-});
-
-CoursesGrid.displayName = 'CoursesGrid';
 
 // ============================================================================
 // Main App Component

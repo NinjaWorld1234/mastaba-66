@@ -149,7 +149,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
           {/* Deep organic curve with smooth wave */}
           <path
             d="M0,60 L0,35 C40,35 80,35 120,35 C150,35 165,45 185,55 Q200,62 215,55 C235,45 250,35 280,35 C320,35 360,35 400,35 L400,60 Z"
-            fill="rgba(3, 58, 44, 0.9)"
+            fill="rgba(255, 255, 255, 0.02)"
+            className="backdrop-blur-sm"
           />
           {/* Subtle highlight on the curve edge */}
           <path
@@ -160,7 +161,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
           />
         </svg>
         {/* Footer Content */}
-        <div className="relative bg-[rgba(3,58,44,0.85)] backdrop-blur-sm px-6 py-4 border-t border-white/10">
+        <div className="relative bg-white/[0.03] backdrop-blur-md px-6 py-4 border-t border-white/10">
           <div className="flex flex-col-reverse md:flex-row justify-between items-center gap-4 w-full text-xs text-white/60">
             {/* Right side (Start in RTL): Copyright */}
             <div>Muslim Youth Forum © 2024</div>

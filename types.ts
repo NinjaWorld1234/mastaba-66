@@ -129,6 +129,8 @@ export interface Course {
   status?: CourseStatus;
   /** Default passing score for course quizzes */
   passingScore?: number;
+  /** Number of lessons between automated quizzes */
+  quizFrequency?: number;
   /** Episodes in this course */
   episodes?: Episode[];
 }
@@ -474,6 +476,10 @@ export interface Message {
   read: boolean | number;
   timestamp: string;
   is_from_support?: number;
+  attachmentUrl?: string;
+  attachmentType?: 'audio' | 'image' | 'file';
+  attachmentName?: string;
+  expiryDate?: string;
   otherUser?: {
     name: string;
     avatar: string;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Download, Loader, CheckCircle, Lock } from 'lucide-react';
+import { Award, Download, Loader, CheckCircle, Lock, Image as ImageIcon, FileText } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
 import { Certificate, Course } from '../types';
@@ -62,20 +62,77 @@ const StudentCertificates: React.FC = () => {
         }
     };
 
-    const handleDownload = () => {
-        window.print();
+    const handleDownloadPDF = async () => {
+        const element = document.getElementById('certificate-template');
+        if (!element) return;
+
+        try {
+            toast.success('جاري تجهيز ملف PDF...');
+            const html2canvas = (await import('html2canvas')).default;
+            const { jsPDF } = await import('jspdf');
+
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const pdf = new jsPDF({
+                orientation: 'landscape',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+
+            pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+            pdf.save(`certificate-${selectedCert?.courseId}.pdf`);
+            toast.success('تم تحميل الشهادة بنجاح');
+        } catch (error) {
+            console.error('PDF download error:', error);
+            toast.error('حدث خطأ أثناء تحميل الملف');
+        }
+    };
+
+    const handleDownloadImage = async () => {
+        const element = document.getElementById('certificate-template');
+        if (!element) return;
+
+        try {
+            toast.success('جاري تجهيز الصورة...');
+            const html2canvas = (await import('html2canvas')).default;
+
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            const link = document.createElement('a');
+            link.download = `certificate-${selectedCert?.courseId}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 1.0);
+            link.click();
+            toast.success('تم تحميل الصورة بنجاح');
+        } catch (error) {
+            console.error('Image download error:', error);
+            toast.error('حدث خطأ أثناء تحميل الصورة');
+        }
     };
 
     // Calculate Eligible Courses (Completed but no certificate yet)
-    const eligibleCourses = courses.filter(course => {
+    // Ensure courses is an array to prevent crashes
+    const safeCourses = Array.isArray(courses) ? courses : [];
+
+    const eligibleCourses = safeCourses.filter(course => {
         const hasCert = certificates.some(c => c.courseId === course.id);
         const isCompleted = course.progress === 100; // Assuming course object has user progress mapped
         return isCompleted && !hasCert;
     });
 
     // Check Master Eligibility
-    const completedCoursesCount = courses.filter(c => c.progress === 100).length;
-    const totalCourses = courses.length;
+    const completedCoursesCount = safeCourses.filter(c => c.progress === 100).length;
+    const totalCourses = safeCourses.length;
     const isMasterEligible = totalCourses > 0 && completedCoursesCount === totalCourses;
     const hasMasterCert = certificates.some(c => c.courseId === 'MASTER_CERT');
 
@@ -233,14 +290,30 @@ const StudentCertificates: React.FC = () => {
                     </button>
 
                     <div className="glass-panel p-1 border-4 border-double border-gold-600/30 rounded-lg w-full bg-[#fffcf2] mb-8 relative group">
-                        {/* Download Overlay */}
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10 rounded-lg no-print">
+                        {/* Download Toolbar - Always Visible */}
+                        <div className="flex flex-wrap gap-3 mb-6 justify-center w-full no-print">
                             <button
-                                onClick={handleDownload}
-                                className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-all"
+                                onClick={handleDownloadPDF}
+                                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-red-900/20 transition-all"
+                            >
+                                <FileText className="w-5 h-5" />
+                                <span>تحميل PDF</span>
+                            </button>
+
+                            <button
+                                onClick={handleDownloadImage}
+                                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-blue-900/20 transition-all"
+                            >
+                                <ImageIcon className="w-5 h-5" />
+                                <span>تحميل صورة</span>
+                            </button>
+
+                            <button
+                                onClick={() => window.print()}
+                                className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-gray-900/20 transition-all"
                             >
                                 <Download className="w-5 h-5" />
-                                <span>تحميل PDF</span>
+                                <span>طباعة</span>
                             </button>
                         </div>
 

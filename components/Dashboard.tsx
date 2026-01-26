@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo, memo } from 'react';
-import { Play, TrendingUp, Trophy, Target, Star, Zap } from 'lucide-react';
+import { Play, TrendingUp, Trophy, Target, Star, Zap, Bell } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { BADGES } from '../constants';
 import { Course } from '../types';
@@ -20,6 +20,8 @@ interface DashboardProps {
    onPlayCourse: (course: Course) => void;
    /** Optional callback to change the active tab */
    setActiveTab?: (tab: string) => void;
+   /** Optional unread message count */
+   unreadCount?: number;
 }
 
 /**
@@ -104,7 +106,7 @@ CourseCard.displayName = 'CourseCard';
  * @param props - Dashboard props
  * @returns Dashboard component
  */
-const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }) => {
+const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab, unreadCount }) => {
    const { t, language } = useLanguage();
    const { user } = useAuth();
    const [courses, setCourses] = useState<Course[]>([]);
@@ -136,8 +138,11 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
 
    /** Calculate actual progress from courses */
    const courseProgress = useMemo(() => {
-      if (courses.length === 0) return 0;
-      const totalProgress = courses.reduce((sum, c) => sum + (c.progress || 0), 0);
+      if (!Array.isArray(courses) || courses.length === 0) return 0;
+      const totalProgress = courses.reduce((sum, c) => {
+         const prog = (c && typeof c.progress === 'number') ? c.progress : 0;
+         return sum + prog;
+      }, 0);
       return Math.round(totalProgress / courses.length);
    }, [courses]);
 
@@ -152,13 +157,35 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab }
    /** Get displayed courses (first 4) */
    const displayedCourses = useMemo(() => courses.slice(0, 4), [courses]);
 
-   /** User statistics from context */
-   const userPoints = user?.points || 0;
-   const userStreak = user?.streak || 0;
-   const userLevel = user?.level || 1;
+   /** User statistics from context with safe fallbacks */
+   const userPoints = (user && typeof user.points === 'number') ? user.points : 0;
+   const userStreak = (user && typeof user.streak === 'number') ? user.streak : 0;
+   const userLevel = (user && typeof user.level === 'number') ? user.level : 1;
 
    return (
       <div className="space-y-6 animate-fade-in pb-10 relative" role="main" aria-label={t('dashboard.title') || 'Dashboard'}>
+
+         {/* New Message Banner */}
+         {unreadCount !== undefined && unreadCount > 0 ? (
+            <div
+               onClick={() => setActiveTab?.('messages')}
+               className="bg-gradient-to-r from-violet-600/20 to-indigo-600/20 border border-violet-500/30 p-4 rounded-2xl flex items-center justify-between cursor-pointer group hover:border-violet-400/50 transition-all backdrop-blur-md relative z-30 mb-8"
+            >
+               <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-violet-500 rounded-xl flex items-center justify-center shadow-lg shadow-violet-900/40 group-hover:scale-110 transition-transform">
+                     <Bell className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                     <h4 className="text-white font-bold text-sm">لديك رسائل جديدة لم تقرأ بعد!</h4>
+                     <p className="text-violet-200/70 text-xs mt-0.5">هناك {unreadCount} رسائل في انتظارك بمحادثة الدعم.</p>
+                  </div>
+               </div>
+               <div className="flex items-center gap-2 text-violet-300 text-xs font-bold bg-white/5 px-3 py-1.5 rounded-lg group-hover:bg-white/10 transition-colors">
+                  <span>انتقال للمحادثات</span>
+                  <Play className="w-3 h-3 rotate-180" />
+               </div>
+            </div>
+         ) : null}
 
          {/* 1. Compact Top Tiles Section */}
          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" role="region" aria-label={t('dashboard.stats') || 'Statistics'}>

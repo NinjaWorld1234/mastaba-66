@@ -7,14 +7,14 @@
  * @module components/RouteErrorBoundary
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface Props {
+interface RouteErrorBoundaryProps {
     /** Child components to render */
     children: ReactNode;
     /** Optional fallback component */
@@ -25,7 +25,7 @@ interface Props {
     errorTitle?: string;
 }
 
-interface State {
+interface RouteErrorBoundaryState {
     /** Whether an error has been caught */
     hasError: boolean;
     /** The caught error */
@@ -46,21 +46,20 @@ interface State {
  *   <MyComponent />
  * </RouteErrorBoundary>
  */
-class RouteErrorBoundary extends Component<Props, State> {
-    state: State = {
-        hasError: false,
-        error: null,
-        errorInfo: null
-    };
-
-    constructor(props: Props) {
+class RouteErrorBoundary extends React.Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+    constructor(props: RouteErrorBoundaryProps) {
         super(props);
+        this.state = {
+            hasError: false,
+            error: null,
+            errorInfo: null
+        };
     }
 
     /**
      * Update state when an error is caught
      */
-    static getDerivedStateFromError(error: Error): Partial<State> {
+    static getDerivedStateFromError(error: Error): Partial<RouteErrorBoundaryState> {
         return { hasError: true, error };
     }
 
@@ -71,7 +70,9 @@ class RouteErrorBoundary extends Component<Props, State> {
         this.setState({ errorInfo });
 
         // Call optional error callback
-        this.props.onError?.(error, errorInfo);
+        if (this.props.onError) {
+            this.props.onError(error, errorInfo);
+        }
 
         // Log to console in development
         console.error('RouteErrorBoundary caught an error:', error, errorInfo);
@@ -168,8 +169,5 @@ class RouteErrorBoundary extends Component<Props, State> {
         return children;
     }
 }
-
-RouteErrorBoundary.displayName = 'RouteErrorBoundary';
-(RouteErrorBoundary as any).displayName = 'RouteErrorBoundary';
 
 export default RouteErrorBoundary;

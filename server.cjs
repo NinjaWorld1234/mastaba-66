@@ -20,8 +20,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.raw({ type: 'application/octet-stream', limit: '100mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.raw({ type: ['application/octet-stream', 'audio/webm', 'audio/ogg', 'video/webm', 'video/mp4', 'image/*'], limit: '100mb' }));
 
 // Request Logger (Helpful for Hostinger Debugging)
 app.use((req, res, next) => {
@@ -46,45 +46,41 @@ app.get('/api/health', (req, res) => {
 app.get('/api/fix-db', (req, res) => {
     try {
         const bcrypt = require('bcryptjs');
+        const checkUser = db.prepare('SELECT id FROM users WHERE email = ?');
+        const insertUser = db.prepare(`
+            INSERT INTO users (id, email, password, name, role, joinDate, emailVerified, avatar)
+            VALUES (@id, @email, @password, @name, @role, @joinDate, @emailVerified, @avatar)
+        `);
+        const updateUserPass = db.prepare('UPDATE users SET password = ? WHERE email = ?');
+
         let fixed = [];
+        const usersToFix = [
+            { id: "1", email: "ahmed@example.com", pass: "123456", name: "أحمد محمد", role: "student" },
+            { id: "2", email: "admin@example.com", pass: "admin123", name: "مدير النظام", role: "admin" }
+        ];
 
-        // Ahmed
-        const ahmed = db.data.users.find(u => u.email === 'ahmed@example.com');
-        if (ahmed) {
-            ahmed.password = bcrypt.hashSync('123456', 10);
-            fixed.push('Ahmed');
-        } else {
-            fixed.push('Ahmed (Created)');
-            db.data.users.push({
-                id: "1",
-                name: "أحمد محمد",
-                email: "ahmed@example.com",
-                password: bcrypt.hashSync('123456', 10),
-                role: "student",
-                joinDate: new Date().toISOString(),
-                emailVerified: 1
-            });
+        for (const u of usersToFix) {
+            const hash = bcrypt.hashSync(u.pass, 10);
+            const existing = checkUser.get(u.email);
+            if (existing) {
+                updateUserPass.run(hash, u.email);
+                fixed.push(u.email + ' (Password Reset)');
+            } else {
+                insertUser.run({
+                    id: u.id,
+                    email: u.email,
+                    password: hash,
+                    name: u.name,
+                    role: u.role,
+                    joinDate: new Date().toISOString(),
+                    emailVerified: 1,
+                    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random`
+                });
+                fixed.push(u.email + ' (Created)');
+            }
         }
 
-        // Admin
-        const admin = db.data.users.find(u => u.email === 'admin@example.com');
-        if (admin) {
-            admin.password = bcrypt.hashSync('admin123', 10);
-            fixed.push('Admin');
-        } else {
-            fixed.push('Admin (Created)');
-            db.data.users.push({
-                id: "2",
-                name: "مدير النظام",
-                email: "admin@example.com",
-                password: bcrypt.hashSync('admin123', 10),
-                role: "admin",
-                joinDate: new Date().toISOString()
-            });
-        }
-
-        db.save();
-        res.json({ success: true, fixed, message: 'Database default users refreshed' });
+        res.json({ success: true, fixed, message: 'Database default users refreshed (SQLite)' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

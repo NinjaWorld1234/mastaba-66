@@ -30,7 +30,7 @@ async function fixUsers() {
             continue;
         }
 
-        const user = users.find(u => u.email === email);
+        const user = (users as any[]).find(u => u.email === email);
         if (!user) {
             console.log(`User ${email} not found in Auth. Skipping.`);
             continue;

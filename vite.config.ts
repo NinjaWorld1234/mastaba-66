@@ -26,10 +26,10 @@ export default defineConfig(({ mode }) => {
           name: 'المصطبة العلمية',
           short_name: 'المصطبة',
           description: 'منصة معرفية شاملة للشباب المسلم للدورات الإسلامية الصوتية والمرئية',
-          theme_color: '#0f3d36',
-          background_color: '#0f3d36',
+          theme_color: '#0a191f',
+          background_color: '#0a191f',
           display: 'standalone',
-          orientation: 'portrait-primary',
+          orientation: 'any',
           start_url: '/',
           lang: 'ar',
           dir: 'rtl',
@@ -49,6 +49,9 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           runtimeCaching: [
             {

@@ -49,7 +49,7 @@ interface CourseState {
 export const useCourseStore = create<CourseState>((set, get) => ({
     courses: [],
     selectedCourse: null,
-    favorites: api.getFavorites(),
+    favorites: [], // Initialize empty, will be loaded asynchronously
     isLoading: false,
     error: null,
 

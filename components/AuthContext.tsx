@@ -195,11 +195,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     /**
      * Updates the current user's information
      */
-    const updateUser = useCallback((updates: Partial<User>): void => {
+    const updateUser = useCallback(async (updates: Partial<User>): Promise<void> => {
         if (user) {
-            const updatedUser = api.updateUser(user.id, updates);
-            if (updatedUser) {
-                setUser(updatedUser);
+            try {
+                const updatedUser = await api.updateUser(user.id, updates);
+                if (updatedUser) {
+                    setUser(updatedUser);
+                }
+            } catch (error) {
+                console.error('Failed to update user:', error);
             }
         }
     }, [user]);

@@ -4,9 +4,9 @@
     "description": "منصة معرفية شاملة للشباب المسلم للدورات الإسلامية الصوتية والمرئية",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0f3d36",
-    "theme_color": "#0f3d36",
-    "orientation": "portrait-primary",
+    "background_color": "#0a191f",
+    "theme_color": "#0a191f",
+    "orientation": "any",
     "icons": [
         {
             "src": "/icons/icon-72x72.png",

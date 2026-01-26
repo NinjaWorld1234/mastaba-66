@@ -1,24 +1,83 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, BookOpen, Mic2, FileText, Play, Trash2, FolderOpen, Grid, List, Search } from 'lucide-react';
+import { useAuth } from './AuthContext';
+import { useApi } from '../hooks/useApi';
+import LoadingSpinner from './LoadingSpinner';
+
+import { api } from '../services/api';
 
 const Favorites: React.FC = () => {
+    const { user } = useAuth();
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [activeCategory, setActiveCategory] = useState('all');
+    const [isLoading, setIsLoading] = useState(true);
+    const [favorites, setFavorites] = useState<any[]>([]);
+    const [allContent, setAllContent] = useState<any[]>([]);
 
-    const [favorites, setFavorites] = useState([
-        { id: 1, type: 'course', title: 'تفسير جزء عم', instructor: 'الشيخ أحمد العمري', image: 'https://images.unsplash.com/photo-1609599006353-e629aaabfeae?w=300&h=200&fit=crop', progress: 65 },
-        { id: 2, type: 'audio', title: 'شرح الأربعين النووية', instructor: 'الشيخ محمد المنجد', image: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=300&h=200&fit=crop', progress: 40 },
-        { id: 3, type: 'document', title: 'ملخص فقه الطهارة', author: 'د. عبدالله الفوزان', image: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=300&h=200&fit=crop' },
-        { id: 4, type: 'course', title: 'السيرة النبوية', instructor: 'الشيخ عبدالله الفهد', image: 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=300&h=200&fit=crop', progress: 80 },
-        { id: 5, type: 'audio', title: 'قصص الأنبياء', instructor: 'الشيخ نبيل العوضي', image: 'https://images.unsplash.com/photo-1585036156261-1e2ac61e1a42?w=300&h=200&fit=crop', progress: 25 },
-        { id: 6, type: 'document', title: 'متن الجزرية', author: 'ابن الجزري', image: 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=300&h=200&fit=crop' },
-    ]);
+    useEffect(() => {
+        const loadData = async () => {
+            if (!user) return;
+            setIsLoading(true);
+            try {
+                // Fetch favorites
+                const favs = await api.users.getFavorites(user.id);
 
-    const handleUnfavorite = (id: number) => {
+                // For a complete implementation, we'd fetch the source items (courses, etc.)
+                // But for now, let's create a display-ready object by mapping or fetching more
+                // Metadata from current DB in frontend (Courses, resources)
+                const courses = await api.courses.getCourses();
+                const resources = await api.content.getResources(); // Assuming this returns documents and audios
+
+                const merged = favs.map((f: any) => {
+                    let sourceItem: any = null;
+                    if (f.type === 'course') {
+                        sourceItem = courses.find((c: any) => String(c.id) === String(f.targetId));
+                    } else {
+                        // For audio/document we'd look in resources
+                        sourceItem = resources.find((r: any) => String(r.id) === String(f.targetId));
+                    }
+
+                    if (sourceItem) {
+                        return {
+                            ...sourceItem,
+                            id: f.id, // DB Favorite ID
+                            targetId: f.targetId, // Item ID (Course ID etc)
+                            type: f.type,
+                            title: sourceItem.title || sourceItem.label,
+                            instructor: sourceItem.instructor || sourceItem.author,
+                            image: sourceItem.image || sourceItem.thumbnail
+                        };
+                    }
+                    return null;
+                }).filter(Boolean);
+
+                setFavorites(merged);
+            } catch (error) {
+                console.error("Failed to load favorites", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadData();
+    }, [user, api]);
+
+    const handleUnfavorite = async (targetId: string, type: string) => {
+        if (!user) return;
         if (confirm('إزالة من المفضلة؟')) {
-            setFavorites(prev => prev.filter(item => item.id !== id));
+            try {
+                const res = await api.toggleFavorite(user.id, targetId, type);
+                if (res?.action === 'removed') {
+                    setFavorites(prev => prev.filter(item => !(item.targetId === String(targetId) && item.type === type)));
+                }
+            } catch (error) {
+                console.error("Error toggling favorite", error);
+            }
         }
     };
+
+    if (isLoading) {
+        return <LoadingSpinner fullScreen />;
+    }
 
     const categories = [
         { id: 'all', label: 'الكل', icon: FolderOpen, count: favorites.length },
@@ -114,7 +173,7 @@ const Favorites: React.FC = () => {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => handleUnfavorite(item.id)}
+                                        onClick={() => handleUnfavorite(item.targetId, item.type)}
                                         className="absolute top-3 left-3 p-2 rounded-lg bg-black/50 text-red-500 hover:bg-red-600 hover:text-white transition-colors"
                                     >
                                         <Heart className="w-4 h-4 fill-current" />
@@ -181,7 +240,7 @@ const Favorites: React.FC = () => {
                                         <Play className="w-5 h-5" />
                                     </button>
                                     <button
-                                        onClick={() => handleUnfavorite(item.id)}
+                                        onClick={() => handleUnfavorite(item.targetId, item.type)}
                                         className="p-2 rounded-lg bg-white/5 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors"
                                     >
                                         <Trash2 className="w-5 h-5" />

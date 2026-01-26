@@ -130,9 +130,9 @@ const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPrelo
     { id: 'announcements', icon: Megaphone, label: t('admin.announcements') },
     { id: 'quizzes', icon: ClipboardList, label: t('admin.quizManagement') },
     { id: 'activity-log', icon: Activity, label: t('admin.activityLog') },
-    { id: 'certificates-admin', icon: Award, label: t('admin.certificatesAdmin') },
-    { id: 'messages', icon: MessageSquare, label: 'المراسلات', badgeCount: unreadMessagesCount },
+    { id: 'certificates', icon: Award, label: t('admin.certificatesAdmin') },
     { id: 'backup', icon: Database, label: t('admin.backup') },
+    { id: 'messages', icon: MessageSquare, label: 'المراسلات', badgeCount: unreadMessagesCount },
   ], [t, unreadMessagesCount]);
 
   /** Get menu items based on user role */
