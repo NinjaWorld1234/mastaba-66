@@ -2,7 +2,6 @@ services:
   app:
     build: .
     image: scientific-bench-app
-    container_name: scientific-bench
     restart: always
     ports:
       - "3001:5000"
