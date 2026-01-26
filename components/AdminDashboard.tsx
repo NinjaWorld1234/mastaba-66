@@ -4,7 +4,7 @@
  */
 
 import React, { memo, useCallback, useMemo } from 'react';
-import { Users, Mic2, TrendingUp, Download, Calendar, Activity, LucideIcon } from 'lucide-react';
+import { Users, Mic2, TrendingUp, Download, Calendar, Activity, Bell, Play, LucideIcon } from 'lucide-react';
 import { RECENT_ACTIVITY } from '../constants';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { api } from '../services/api';
@@ -15,6 +15,8 @@ import { api } from '../services/api';
 interface AdminDashboardProps {
    /** Callback to change the active tab */
    setActiveTab?: (tab: string) => void;
+   /** Optional unread message count */
+   unreadCount?: number;
 }
 
 /**
@@ -146,7 +148,7 @@ ActivityItemCard.displayName = 'ActivityItemCard';
  * @param props - AdminDashboard props
  * @returns AdminDashboard component
  */
-const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab, unreadCount }) => {
    /** Dynamic stats from API */
    const [stats, setStats] = React.useState({
       totalStudents: 0,
@@ -249,6 +251,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab }) =>
 
    return (
       <div className="space-y-6 animate-fade-in pb-10" role="main" aria-label="لوحة التحكم">
+
+         {/* New Message Banner for Admin */}
+         {unreadCount !== undefined && unreadCount > 0 ? (
+            <div
+               onClick={() => setActiveTab?.('messages')}
+               className="bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border border-emerald-500/30 p-4 rounded-2xl flex items-center justify-between cursor-pointer group hover:border-emerald-400/50 transition-all backdrop-blur-md relative z-30 mb-8"
+            >
+               <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/40 group-hover:scale-110 transition-transform">
+                     <Bell className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                     <h4 className="text-white font-bold text-sm">لديك رسائل دعم جديدة!</h4>
+                     <p className="text-emerald-200/70 text-xs mt-0.5">هناك {unreadCount} رسائل لم يتم الرد عليها بعد.</p>
+                  </div>
+               </div>
+               <div className="flex items-center gap-2 text-emerald-300 text-xs font-bold bg-white/5 px-3 py-1.5 rounded-lg group-hover:bg-white/10 transition-colors">
+                  <span>انتقال للمحادثات</span>
+                  <Play className="w-3 h-3 rotate-180" />
+               </div>
+            </div>
+         ) : null}
          {/* Header */}
          <header className="flex justify-between items-end mb-6 relative">
             <div className="absolute -left-20 -top-20 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none" aria-hidden="true"></div>

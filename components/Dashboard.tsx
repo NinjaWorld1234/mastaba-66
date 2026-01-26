@@ -165,24 +165,27 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab, 
    return (
       <div className="space-y-6 animate-fade-in pb-10 relative" role="main" aria-label={t('dashboard.title') || 'Dashboard'}>
 
-         {/* New Message Banner */}
+         {/* Enhanced New Message Banner */}
          {unreadCount !== undefined && unreadCount > 0 ? (
             <div
                onClick={() => setActiveTab?.('messages')}
-               className="bg-gradient-to-r from-violet-600/20 to-indigo-600/20 border border-violet-500/30 p-4 rounded-2xl flex items-center justify-between cursor-pointer group hover:border-violet-400/50 transition-all backdrop-blur-md relative z-30 mb-8"
+               className="bg-gradient-to-r from-violet-600/30 via-indigo-600/20 to-transparent border border-violet-500/40 p-5 rounded-[2rem] flex items-center justify-between cursor-pointer group hover:border-violet-400/60 transition-all backdrop-blur-xl relative z-30 mb-8 shadow-2xl shadow-violet-900/20 overflow-hidden"
             >
-               <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-violet-500 rounded-xl flex items-center justify-center shadow-lg shadow-violet-900/40 group-hover:scale-110 transition-transform">
-                     <Bell className="w-6 h-6 text-white" />
+               <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+               <div className="flex items-center gap-5 relative z-10">
+                  <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-900/50 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 relative">
+                     <Bell className="w-7 h-7 text-white" />
+                     <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-[#0a1f1c] animate-pulse" />
+                     <div className="absolute inset-0 bg-white/20 rounded-2xl animate-pulse-slow" />
                   </div>
                   <div>
-                     <h4 className="text-white font-bold text-sm">لديك رسائل جديدة لم تقرأ بعد!</h4>
-                     <p className="text-violet-200/70 text-xs mt-0.5">هناك {unreadCount} رسائل في انتظارك بمحادثة الدعم.</p>
+                     <h4 className="text-white font-extrabold text-lg leading-tight group-hover:text-violet-200 transition-colors">لديك رسائل جديدة لم تقرأ بعد!</h4>
+                     <p className="text-violet-200/80 text-sm mt-1 font-medium">هناك <span className="text-white font-bold px-1.5 py-0.5 bg-white/10 rounded-md">{unreadCount}</span> رسائل في انتظارك بمحادثة الدعم.</p>
                   </div>
                </div>
-               <div className="flex items-center gap-2 text-violet-300 text-xs font-bold bg-white/5 px-3 py-1.5 rounded-lg group-hover:bg-white/10 transition-colors">
+               <div className="flex items-center gap-3 text-white text-xs font-black bg-violet-500/30 px-5 py-2.5 rounded-full group-hover:bg-violet-500/50 transition-all border border-violet-400/30 shadow-inner">
                   <span>انتقال للمحادثات</span>
-                  <Play className="w-3 h-3 rotate-180" />
+                  <Play className="w-3 h-3 rotate-180 fill-current" />
                </div>
             </div>
          ) : null}

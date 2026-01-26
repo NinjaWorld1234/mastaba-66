@@ -235,7 +235,7 @@ const AppContent: React.FC = () => {
         } />
 
         {/* Admin Routes */}
-        <Route path="/admin" element={<AdminRoute><AdminDashboard setActiveTab={setActiveTab} /></AdminRoute>} />
+        <Route path="/admin" element={<AdminRoute><AdminDashboard setActiveTab={setActiveTab} unreadCount={unreadCount} /></AdminRoute>} />
         <Route path="/admin/students" element={<AdminRoute><AdminStudents onOpenChat={handleOpenChat} /></AdminRoute>} />
         <Route path="/admin/audio-courses" element={<AdminRoute><AdminAudioCourses onPreview={handlePlayCourse} /></AdminRoute>} />
         <Route path="/admin/reports" element={<AdminRoute><AdminReports /></AdminRoute>} />
