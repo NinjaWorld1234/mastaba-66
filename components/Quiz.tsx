@@ -176,19 +176,24 @@ const Quiz: React.FC<QuizProps> = ({ quiz, onSuccess, onClose }) => {
           )}
 
           <div className="flex gap-4">
+            {!isPassed && (
+              <button
+                onClick={() => {
+                  setIsSubmitted(false);
+                  setCurrentQuestionIdx(0);
+                  setScore(0);
+                  setSelectedOption(null);
+                  setUserAnswers([]);
+                }}
+                className="flex-1 py-4 rounded-xl border border-white/10 text-white hover:bg-white/5 transition-colors font-bold"
+              >
+                إعادة المحاولة
+              </button>
+            )}
             <button
-              onClick={() => {
-                setIsSubmitted(false);
-                setCurrentQuestionIdx(0);
-                setScore(0);
-                setSelectedOption(null);
-                setUserAnswers([]);
-              }}
-              className="flex-1 py-4 rounded-xl border border-white/10 text-white hover:bg-white/5 transition-colors font-bold"
+              onClick={onClose}
+              className={`py-4 rounded-xl text-white font-bold transition-colors ${isPassed ? 'w-full bg-emerald-600 hover:bg-emerald-500' : 'flex-1 bg-white/10 hover:bg-white/20'}`}
             >
-              إعادة المحاولة
-            </button>
-            <button onClick={onClose} className="flex-1 py-4 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20 transition-colors">
               إغلاق
             </button>
           </div>

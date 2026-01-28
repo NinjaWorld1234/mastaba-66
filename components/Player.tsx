@@ -467,7 +467,7 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                     const afterEpIdx = quiz.afterEpisodeIndex || 0;
                     // A quiz is locked if the episode it follows is not completed (or if it's the current one and not yet finished)
                     const isAdmin = user?.role === 'admin';
-                    const isLocked = !isAdmin && afterEpIdx > 0 && isEpisodeLocked(afterEpIdx - 1);
+                    const isLocked = !isAdmin && afterEpIdx > 0 && isEpisodeLocked(afterEpIdx);
 
                     return (
                       <div
