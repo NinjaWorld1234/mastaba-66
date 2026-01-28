@@ -1,7 +1,8 @@
 services:
   app:
     build: .
-    image: scientific-bench-app
+    image: mastaba-v3-image
+    container_name: mastaba-v3-container
     restart: always
     ports:
       - "3001:5000"

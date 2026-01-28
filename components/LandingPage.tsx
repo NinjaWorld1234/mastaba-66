@@ -14,7 +14,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="font-sans text-white h-screen overflow-hidden relative">
+    <div className="font-sans text-white min-h-screen w-full relative flex flex-col">
 
       {/* BEGIN: Top Bar */}
       <header className="relative z-10 flex justify-between items-center px-6 py-4 md:px-12 md:py-6 w-full">
@@ -59,7 +59,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
       {/* END: Top Bar */}
 
       {/* BEGIN: Main Content */}
-      <main className="relative z-10 flex flex-col items-center justify-start md:justify-center min-h-[calc(100vh-160px)] w-full px-4 py-6 overflow-y-auto">
+      <main className="relative z-10 flex flex-col items-center justify-center flex-grow w-full px-4 py-8">
         {/* Glassmorphism Card */}
         <div className="glass-panel-heavy rounded-3xl p-6 md:p-12 w-full max-w-3xl flex flex-col items-center text-center shadow-2xl border-t border-white/30 flex-shrink-0" data-purpose="main-card">
           {/* Card Language Toggle (Absolute) */}
@@ -114,9 +114,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
             </button>
           </div>
         </div>
-        {/* Quick Login Buttons - للتطوير فقط */}
         {onQuickLogin && (
-          <div className="mt-6 mb-16 md:mb-6 flex flex-col md:flex-row items-center justify-center gap-3 w-full px-4 flex-shrink-0">
+          <div className="mt-8 mb-8 flex flex-col md:flex-row items-center justify-center gap-3 w-full max-w-lg px-4 flex-shrink-0">
             <button
               onClick={() => onQuickLogin('student')}
               className="w-full md:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full text-sm font-bold transition-colors flex items-center justify-center gap-2 border border-emerald-400/30 shadow-lg"
@@ -138,7 +137,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
       {/* END: Main Content */}
 
       {/* BEGIN: Footer */}
-      <footer className="fixed bottom-0 left-0 w-full z-10">
+      <footer className="relative w-full z-10">
         {/* SVG Curved Notch */}
         <svg
           className="absolute bottom-full left-0 w-full h-20 md:h-16"
