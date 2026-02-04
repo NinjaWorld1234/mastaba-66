@@ -1,53 +1,127 @@
+/**
+ * Content Routes Module
+ * 
+ * Handles library resources and announcements.
+ * - GET routes: Public
+ * - POST routes: Admin only
+ * 
+ * @module server/routes/content
+ */
+
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database.cjs');
+const { authenticateToken, requireAdmin } = require('../middleware.cjs');
 
-// Library
+// ============================================================================
+// Library Resources (Public GET, Admin POST)
+// ============================================================================
 router.get('/library', (req, res) => {
     try {
         const resources = db.prepare('SELECT * FROM library_resources ORDER BY createdAt DESC').all();
         res.json(resources);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[LIBRARY_GET_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to fetch library resources' });
     }
 });
 
-// Announcements
+router.post('/library', authenticateToken, requireAdmin, (req, res) => {
+    const { title, type, url, description, thumbnail } = req.body;
+
+    if (!title || !type || !url) {
+        return res.status(400).json({ error: 'Missing required fields: title, type, url' });
+    }
+
+    try {
+        const id = 'resource_' + Date.now();
+        db.prepare(`
+            INSERT INTO library_resources (id, title, type, url, description, thumbnail, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(id, title, type, url, description || '', thumbnail || '', new Date().toISOString());
+
+        console.log(`[LIBRARY_RESOURCE_CREATED] Admin ${req.user.id} created resource: ${id}`);
+        res.status(201).json({ success: true, id });
+    } catch (e) {
+        console.error('[LIBRARY_CREATE_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to create library resource' });
+    }
+});
+
+// ============================================================================
+// Announcements (Public GET, Admin POST)
+// ============================================================================
 router.get('/announcements', (req, res) => {
     try {
         const announcements = db.prepare('SELECT * FROM announcements ORDER BY date DESC').all();
         res.json(announcements);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[ANNOUNCEMENTS_GET_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to fetch announcements' });
     }
 });
 
-router.post('/announcements', (req, res) => {
-    const { title, content, type, date } = req.body;
+router.post('/announcements', authenticateToken, requireAdmin, (req, res) => {
+    const { title, content, type } = req.body;
+
+    if (!title || !content) {
+        return res.status(400).json({ error: 'Missing required fields: title, content' });
+    }
+
     try {
         const id = 'ann_' + Date.now();
-        db.prepare('INSERT INTO announcements (id, title, content, type, date) VALUES (?, ?, ?, ?, ?)').run(id, title, content, type, date || new Date().toISOString().split('T')[0]);
-        res.status(201).json({ id, title, content, type, date });
+        const date = new Date().toISOString().split('T')[0];
+
+        db.prepare('INSERT INTO announcements (id, title, content, type, date) VALUES (?, ?, ?, ?, ?)')
+            .run(id, title, content, type || 'info', date);
+
+        console.log(`[ANNOUNCEMENT_CREATED] Admin ${req.user.id} created announcement: ${id}`);
+        res.status(201).json({ id, title, content, type: type || 'info', date });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[ANNOUNCEMENT_CREATE_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to create announcement' });
     }
 });
 
-// Upload URL for Cloudflare R2
-router.post('/upload-url', async (req, res) => {
-    const { fileName, fileType } = req.body;
+router.delete('/announcements/:id', authenticateToken, requireAdmin, (req, res) => {
+    const { id } = req.params;
+
     try {
-        if (!fileName || !fileType) {
-            return res.status(400).json({ error: 'Missing fileName or fileType' });
+        const result = db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'Announcement not found' });
         }
 
-        const { generateUploadUrl } = require('../r2.cjs');
-        const data = await generateUploadUrl(fileName, fileType);
+        console.log(`[ANNOUNCEMENT_DELETED] Admin ${req.user.id} deleted announcement: ${id}`);
+        res.json({ success: true });
+    } catch (e) {
+        console.error('[ANNOUNCEMENT_DELETE_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to delete announcement' });
+    }
+});
 
+// ============================================================================
+// Upload URL for Cloudflare R2 (Admin Only)
+// ============================================================================
+router.post('/upload-url', authenticateToken, requireAdmin, async (req, res) => {
+    const { fileName, fileType } = req.body;
+
+    if (!fileName || !fileType) {
+        return res.status(400).json({ error: 'Missing fileName or fileType' });
+    }
+
+    try {
+        const { generateUploadUrl } = require('../r2.cjs');
+        // Sanitize filename
+        const sanitizedFileName = fileName.replace(/\.\./g, '').replace(/^\/+/, '');
+        const data = await generateUploadUrl(sanitizedFileName, fileType);
+
+        console.log(`[UPLOAD_URL_GENERATED] Admin ${req.user.id} for file: ${sanitizedFileName}`);
         res.json(data);
     } catch (e) {
-        console.error('R2 URL Gen Error:', e);
-        res.status(500).json({ error: e.message });
+        console.error('[UPLOAD_URL_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to generate upload URL' });
     }
 });
 

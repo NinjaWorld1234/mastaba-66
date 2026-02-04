@@ -4,6 +4,7 @@ import { Quiz as QuizType, Question } from '../types';
 import { useLanguage } from './LanguageContext';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
+import RatingModal from './RatingModal';
 
 interface QuizProps {
   quiz: QuizType;
@@ -21,6 +22,7 @@ const Quiz: React.FC<QuizProps> = ({ quiz, onSuccess, onClose }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [userAnswers, setUserAnswers] = useState<number[]>([]);
   const [showReview, setShowReview] = useState(false);
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   if (!quiz.questions || quiz.questions.length === 0) {
     return (
@@ -63,6 +65,7 @@ const Quiz: React.FC<QuizProps> = ({ quiz, onSuccess, onClose }) => {
 
       const percentage = (finalScore / totalQuestions) * 100;
       if (percentage >= passingScore) {
+        setShowRatingModal(true);
         onSuccess();
       }
     } catch (error) {
@@ -203,72 +206,81 @@ const Quiz: React.FC<QuizProps> = ({ quiz, onSuccess, onClose }) => {
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-10 animate-fade-in">
-      <div className="flex justify-between items-center mb-6">
-        <span className="text-gray-400">
-          {t('quiz.questionCount').replace('{{current}}', (currentQuestionIdx + 1).toString()).replace('{{total}}', totalQuestions.toString())}
-        </span>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-red-400">{t('quiz.remainingAttempts')}</span>
-          <div className="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-gold-500" style={{ width: `${((currentQuestionIdx + 1) / totalQuestions) * 100}%` }}></div>
+    <>
+      <div className="max-w-3xl mx-auto py-10 animate-fade-in">
+        <div className="flex justify-between items-center mb-6">
+          <span className="text-gray-400">
+            {t('quiz.questionCount').replace('{{current}}', (currentQuestionIdx + 1).toString()).replace('{{total}}', totalQuestions.toString())}
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-red-400">{t('quiz.remainingAttempts')}</span>
+            <div className="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-full bg-gold-500" style={{ width: `${((currentQuestionIdx + 1) / totalQuestions) * 100}%` }}></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-panel p-8 md:p-12 rounded-[2rem] border-2 border-white/5">
+          <h2 className="text-2xl font-bold text-white mb-10 leading-relaxed">
+            {question.text}
+          </h2>
+
+          <div className="space-y-4">
+            {question.options.map((option, idx) => (
+              <button
+                key={idx}
+                onClick={() => setSelectedOption(idx)}
+                className={`w-full p-5 rounded-2xl flex items-center gap-4 transition-all duration-300 border ${selectedOption === idx
+                  ? 'bg-emerald-500/20 border-emerald-500'
+                  : 'bg-white/5 border-transparent hover:bg-white/10'
+                  }`}
+              >
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedOption === idx ? 'border-emerald-500 bg-emerald-500' : 'border-gray-500'
+                  }`}>
+                  {selectedOption === idx && <div className="w-2 h-2 bg-white rounded-full" />}
+                </div>
+                <span className={`text-lg ${selectedOption === idx ? 'text-white font-medium' : 'text-gray-300'}`}>
+                  {option}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex justify-between mt-12 pt-8 border-t border-white/10">
+            <button
+              disabled={currentQuestionIdx === 0}
+              onClick={handlePrevious}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ArrowRight className="w-5 h-5" />
+              <span>{t('quiz.previous')}</span>
+            </button>
+
+            <button
+              disabled={selectedOption === null || isSaving}
+              onClick={handleNext}
+              className="flex items-center gap-2 px-10 py-3 rounded-xl bg-gold-500 hover:bg-gold-600 text-black font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-gold-500/20"
+            >
+              {isSaving ? (
+                <span>...</span>
+              ) : (
+                <>
+                  <span>{currentQuestionIdx === totalQuestions - 1 ? t('quiz.finish') : t('quiz.next')}</span>
+                  <ArrowLeft className="w-5 h-5" />
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
-
-      <div className="glass-panel p-8 md:p-12 rounded-[2rem] border-2 border-white/5">
-        <h2 className="text-2xl font-bold text-white mb-10 leading-relaxed">
-          {question.text}
-        </h2>
-
-        <div className="space-y-4">
-          {question.options.map((option, idx) => (
-            <button
-              key={idx}
-              onClick={() => setSelectedOption(idx)}
-              className={`w-full p-5 rounded-2xl flex items-center gap-4 transition-all duration-300 border ${selectedOption === idx
-                ? 'bg-emerald-500/20 border-emerald-500'
-                : 'bg-white/5 border-transparent hover:bg-white/10'
-                }`}
-            >
-              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedOption === idx ? 'border-emerald-500 bg-emerald-500' : 'border-gray-500'
-                }`}>
-                {selectedOption === idx && <div className="w-2 h-2 bg-white rounded-full" />}
-              </div>
-              <span className={`text-lg ${selectedOption === idx ? 'text-white font-medium' : 'text-gray-300'}`}>
-                {option}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="flex justify-between mt-12 pt-8 border-t border-white/10">
-          <button
-            disabled={currentQuestionIdx === 0}
-            onClick={handlePrevious}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {language === 'ar' ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
-            <span>{t('quiz.previous')}</span>
-          </button>
-
-          <button
-            disabled={selectedOption === null || isSaving}
-            onClick={handleNext}
-            className="flex items-center gap-2 px-10 py-3 rounded-xl bg-gold-500 hover:bg-gold-600 text-black font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-gold-500/20"
-          >
-            {isSaving ? (
-              <span>...</span>
-            ) : (
-              <>
-                <span>{currentQuestionIdx === totalQuestions - 1 ? t('quiz.finish') : t('quiz.next')}</span>
-                {language === 'ar' ? <ArrowLeft className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
+      <RatingModal
+        isOpen={showRatingModal}
+        onClose={() => {
+          setShowRatingModal(false);
+          onClose();
+        }}
+      />
+    </>
   );
 };
 

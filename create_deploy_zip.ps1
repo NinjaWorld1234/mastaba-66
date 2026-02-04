@@ -1,11 +1,16 @@
-$zipName = "deploy_fix_student_login.zip"
+$zipName = "deploy_production_latest.zip"
 $files = @(
     "dist",
     "server",
     "server.cjs",
     "package.json",
     "package-lock.json",
-    "db.json"
+    "db.json",
+    ".env",
+    "deploy.sh",
+    "docker-compose.yml",
+    "Dockerfile",
+    "nginx_app.conf"
 )
 
 if (Test-Path $zipName) {

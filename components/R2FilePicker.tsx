@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Search, Video, Music, Loader2, CheckCircle2, FileVideo, Clock, HardDrive, RefreshCw, Folder, ChevronRight, ChevronLeft, Plus, Upload, Trash2, Edit3, FolderPlus, Check, MoreVertical } from 'lucide-react';
 import { useLanguage } from './LanguageContext';
 import { useToast } from './Toast';
@@ -127,8 +128,9 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
 
                 // 1. Get pre-signed URL
                 const { uploadUrl } = await api.r2.getUploadUrl(
-                    currentPrefix + file.name,
-                    file.type
+                    file.name,
+                    file.type,
+                    currentPrefix
                 );
 
                 // 2. Upload directly to R2
@@ -215,8 +217,8 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl relative" onClick={e => e.stopPropagation()}>
 
                 {/* Header */}
@@ -558,7 +560,8 @@ const R2FilePicker: React.FC<R2FilePickerProps> = ({ isOpen, onClose, onSelect, 
                     </p>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

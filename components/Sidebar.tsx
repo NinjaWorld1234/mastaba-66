@@ -110,7 +110,6 @@ const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPrelo
     { id: 'courses', icon: BookOpen, label: t('sidebar.myCourses') },
     { id: 'library', icon: GraduationCap, label: t('sidebar.library') },
     { id: 'certificates', icon: Award, label: t('sidebar.certificates') },
-    { id: 'community', icon: Users, label: t('sidebar.community') },
     { id: 'profile', icon: User, label: t('sidebar.profile') },
     { id: 'daily-tracking', icon: Calendar, label: t('sidebar.dailyTracking') },
     { id: 'notifications', icon: Bell, label: t('sidebar.notifications') },
@@ -126,20 +125,30 @@ const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPrelo
     { id: 'students', icon: Users, label: t('admin.students') },
     { id: 'audio-courses', icon: Mic2, label: t('admin.audioCourses') },
     { id: 'reports', icon: BarChart3, label: t('admin.reports') },
-    { id: 'content', icon: FolderOpen, label: t('admin.contentManagement') },
+    { id: 'library', label: t('admin.library'), icon: BookOpen },
     { id: 'announcements', icon: Megaphone, label: t('admin.announcements') },
     { id: 'quizzes', icon: ClipboardList, label: t('admin.quizManagement') },
     { id: 'activity-log', icon: Activity, label: t('admin.activityLog') },
     { id: 'certificates', icon: Award, label: t('admin.certificatesAdmin') },
-    { id: 'backup', icon: Database, label: t('admin.backup') },
     { id: 'messages', icon: MessageSquare, label: 'المراسلات', badgeCount: unreadMessagesCount },
   ], [t, unreadMessagesCount]);
 
+  /** Supervisor navigation menu items */
+  const supervisorItems: MenuItem[] = useMemo(() => [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'لوحة المشرف' },
+    { id: 'students', icon: Users, label: 'الطلاب' },
+    { id: 'audio-courses', icon: Mic2, label: 'الدورات' },
+    { id: 'messages', icon: MessageSquare, label: 'المراسلات', badgeCount: unreadMessagesCount },
+    { id: 'profile', icon: User, label: t('sidebar.profile') },
+    { id: 'notifications', icon: Bell, label: t('sidebar.notifications') },
+  ], [t, unreadMessagesCount]);
+
   /** Get menu items based on user role */
-  const menuItems = useMemo(() =>
-    role === 'admin' ? adminItems : studentItems,
-    [role, adminItems, studentItems]
-  );
+  const menuItems = useMemo(() => {
+    if (role === 'admin') return adminItems;
+    if (role === 'supervisor') return supervisorItems;
+    return studentItems;
+  }, [role, adminItems, studentItems, supervisorItems]);
 
   /** Handle navigation item click */
   const handleNavClick = useCallback((id: string) => {
@@ -183,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPrelo
     <>
       {/* Desktop Sidebar (Existing) */}
       <aside
-        className="hidden md:flex flex-col w-72 h-full glass-panel border-l border-white/20 relative z-20 shadow-2xl overflow-hidden bg-black/30 backdrop-blur-md"
+        className="hidden xl:flex flex-col w-72 h-full glass-panel border-l border-white/20 relative z-20 shadow-2xl overflow-hidden bg-black/30 backdrop-blur-md"
         role="navigation"
         aria-label={role === 'admin' ? t('admin.adminPanel') : t('sidebar.mastaba')}
       >
@@ -298,7 +307,7 @@ const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPrelo
       </aside>
 
       {/* Mobile Bottom Navigation Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-lg border-t border-white/10 flex items-center justify-around z-50 px-2 pb-safe">
+      <div className="xl:hidden fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-lg border-t border-white/10 flex items-center justify-around z-50 px-2 pb-safe">
         {menuItems.slice(0, 4).map((item) => (
           <button
             key={item.id}
@@ -327,7 +336,7 @@ const Sidebar: React.FC<SidebarProps> = memo(({ activeTab, setActiveTab, onPrelo
 
       {/* Mobile Menu Drawer (Overlay) */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[60] flex items-end justify-center">
+        <div className="xl:hidden fixed inset-0 z-[60] flex items-end justify-center">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"

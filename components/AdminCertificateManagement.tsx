@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Plus, Download, Eye, Trash2, Search, Filter, Printer, Mail, Users, CheckCircle, X, Save } from 'lucide-react';
+import { Award, Plus, Download, Eye, Trash2, Search, Filter, Printer, Mail, Users, CheckCircle, X, Save, FileText, Image as ImageIcon } from 'lucide-react';
 import { api } from '../services/api';
 import { Certificate } from '../types';
 
@@ -50,21 +50,40 @@ const AdminCertificateManagement: React.FC = () => {
         }
     };
 
+    const [selectedCert, setSelectedCert] = useState<Certificate | null>(null);
+
     const handlePrint = () => {
         window.print();
     };
 
-    const handleDownload = (cert: Certificate) => {
-        const text = `Certificate of Completion\n\nThis is to certify that\n${cert.userName}\n\nHas successfully completed the course\n${cert.courseTitle}\n\nGrade: ${cert.grade}\nDate: ${cert.issueDate}`;
-        const blob = new Blob([text], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Certificate-${cert.id}.txt`; // SVG or PDF would be better but TXT is safe simple demo
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    const handleDownloadImage = async (cert: Certificate) => {
+        setSelectedCert(cert);
+        // Wait for state to update and modal to open
+        setTimeout(async () => {
+            const element = document.getElementById('certificate-template-full');
+            if (!element) return;
+            const html2canvas = (await import('html2canvas')).default;
+            const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+            const link = document.createElement('a');
+            link.download = `certificate-${cert.id}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 1.0);
+            link.click();
+        }, 500);
+    };
+
+    const handleDownloadPDF = async (cert: Certificate) => {
+        setSelectedCert(cert);
+        setTimeout(async () => {
+            const element = document.getElementById('certificate-template-full');
+            if (!element) return;
+            const html2canvas = (await import('html2canvas')).default;
+            const { jsPDF } = await import('jspdf');
+            const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] });
+            pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+            pdf.save(`certificate-${cert.id}.pdf`);
+        }, 500);
     };
 
     const filteredCertificates = certificates.filter(c =>
@@ -157,9 +176,9 @@ const AdminCertificateManagement: React.FC = () => {
                                 </td>
                                 <td className="py-4 px-6 print:hidden">
                                     <div className="flex items-center gap-2">
-                                        <button className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white"><Eye className="w-4 h-4" /></button>
-                                        <button onClick={() => handleDownload(cert)} className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white"><Download className="w-4 h-4" /></button>
-                                        <button onClick={handlePrint} className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white"><Printer className="w-4 h-4" /></button>
+                                        <button onClick={() => setSelectedCert(cert)} className="p-2 rounded-lg bg-white/5 text-emerald-400 hover:bg-emerald-500/10"><Eye className="w-4 h-4" /></button>
+                                        <button onClick={() => handleDownloadImage(cert)} className="p-2 rounded-lg bg-white/5 text-blue-400 hover:bg-blue-500/10"><ImageIcon className="w-4 h-4" /></button>
+                                        <button onClick={() => handleDownloadPDF(cert)} className="p-2 rounded-lg bg-white/5 text-red-400 hover:bg-red-500/10"><FileText className="w-4 h-4" /></button>
                                     </div>
                                 </td>
                             </tr>
@@ -223,6 +242,43 @@ const AdminCertificateManagement: React.FC = () => {
                                     <span>إصدار الشهادة</span>
                                 </button>
                             </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Certificate Preview Modal */}
+            {selectedCert && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-scale-in">
+                    <div className="w-full max-w-5xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-xl font-bold text-white">معاينة الشهادة</h4>
+                            <button onClick={() => setSelectedCert(null)} className="p-2 text-gray-400 hover:text-white"><X className="w-8 h-8" /></button>
+                        </div>
+
+                        <div className="bg-white shadow-2xl relative overflow-hidden aspect-[1.414/1] w-full">
+                            <div id="certificate-template-full" className="relative w-full h-full flex flex-col items-center">
+                                <img src="/certificate-frame.png" className="absolute inset-0 w-full h-full object-fill" alt="Frame" />
+                                <div className="relative z-10 w-full h-full flex flex-col items-center justify-center text-center py-[12%] px-[15%]">
+                                    <Award className="w-[10%] aspect-square text-emerald-800 mb-[2%]" />
+                                    <h2 className="text-[3.5vw] font-serif text-emerald-950 font-bold mb-[1%] decoration-gold-600">شهادة إتمام</h2>
+                                    <h3 className="text-[1.8vw] text-gold-600 font-bold mb-[5%]">المصطبة العلمية</h3>
+                                    <p className="text-[1.2vw] text-gray-600 mb-[1%]">نشهد بأن</p>
+                                    <h1 className="text-[3vw] font-bold text-emerald-950 mb-[4%] border-b-4 border-gold-400 px-12">{selectedCert.userName}</h1>
+                                    <div className="text-[1.4vw] text-gray-700 leading-relaxed mb-[6%]">
+                                        قد اجتاز بنجاح دورة <span className="font-bold text-emerald-900">"{selectedCert.courseTitle}"</span> بتقدير <span className="text-gold-600 font-bold">{selectedCert.grade}</span>
+                                    </div>
+                                    <div className="flex justify-between w-full mt-auto px-10 items-end">
+                                        <div className="text-center w-[30%]"><div className="text-[1.2vw] border-b border-gray-300 italic">Academy Office</div></div>
+                                        <div className="w-[15%] aspect-square bg-emerald-950 rounded-full border-4 border-gold-500 flex flex-col items-center justify-center text-white scale-110 shadow-xl">
+                                            <span className="text-[0.6vw] opacity-70">المصطبة</span>
+                                            <span className="text-[1vw] font-bold">معتمد</span>
+                                        </div>
+                                        <div className="text-center w-[30%]"><div className="text-[1.2vw] border-b border-gray-300 italic">Director Sign</div></div>
+                                    </div>
+                                    <div className="absolute bottom-[4%] text-[0.8vw] text-gray-400 font-mono tracking-widest">CODE: {selectedCert.code}</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

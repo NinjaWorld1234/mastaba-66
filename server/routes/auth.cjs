@@ -51,17 +51,45 @@ router.post('/register', async (req, res) => {
         const otp = generateOTP();
         const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
+        // Find available supervisor
+        let supervisorId = null;
+        try {
+            const supervisors = db.prepare(`
+                SELECT id, supervisor_capacity, supervisor_priority 
+                FROM users 
+                WHERE role = 'supervisor'
+            `).all();
+
+            const candidates = supervisors.map(sv => {
+                const count = db.prepare('SELECT COUNT(*) as count FROM users WHERE supervisor_id = ?').get(sv.id).count;
+                return { ...sv, count };
+            }).filter(sv => sv.count < (sv.supervisor_capacity || 0));
+
+            // Sort by count (ASC) then priority (ASC)
+            candidates.sort((a, b) => {
+                if (a.count !== b.count) return a.count - b.count;
+                return (a.supervisor_priority || 999) - (b.supervisor_priority || 999);
+            });
+
+            if (candidates.length > 0) {
+                supervisorId = candidates[0].id;
+            }
+        } catch (svError) {
+            console.error('Error finding supervisor during registration:', svError);
+        }
+
         const newUser = {
             id, email, password: hashedPassword, name, nameEn: nameEn || name, role,
             points: 0, level: 1, joinDate: new Date().toISOString().split('T')[0],
             verificationCode: otp, verificationExpiry: expiry, emailVerified: 0,
             whatsapp: whatsapp || '', country: country || '', age: age || 0,
-            gender: gender || '', educationLevel: educationLevel || ''
+            gender: gender || '', educationLevel: educationLevel || '',
+            supervisor_id: supervisorId
         };
 
         db.prepare(`
-            INSERT INTO users (id, email, password, name, nameEn, role, points, level, joinDate, verificationCode, verificationExpiry, emailVerified, whatsapp, country, age, gender, educationLevel)
-            VALUES (@id, @email, @password, @name, @nameEn, @role, @points, @level, @joinDate, @verificationCode, @verificationExpiry, @emailVerified, @whatsapp, @country, @age, @gender, @educationLevel)
+            INSERT INTO users (id, email, password, name, nameEn, role, points, level, joinDate, verificationCode, verificationExpiry, emailVerified, whatsapp, country, age, gender, educationLevel, supervisor_id)
+            VALUES (@id, @email, @password, @name, @nameEn, @role, @points, @level, @joinDate, @verificationCode, @verificationExpiry, @emailVerified, @whatsapp, @country, @age, @gender, @educationLevel, @supervisor_id)
         `).run(newUser);
 
         await sendVerificationEmail(email, otp);

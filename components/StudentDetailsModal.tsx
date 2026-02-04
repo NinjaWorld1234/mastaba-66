@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mail, BookOpen, Award, Activity, Calendar, MapPin, Phone } from 'lucide-react';
+import { X, Mail, BookOpen, Award, Activity, Calendar, MapPin, Phone, UserCheck } from 'lucide-react';
 import { User, Course, Certificate } from '../types';
 import { api } from '../services/api';
+import { useAuth } from './AuthContext';
 
 interface StudentDetailsModalProps {
     isOpen: boolean;
     onClose: () => void;
     studentId: string | null;
-    onMessage: (studentId: string) => void;
+    onMessage?: (studentId: string) => void;
 }
 
 const StudentDetailsModal: React.FC<StudentDetailsModalProps> = ({ isOpen, onClose, studentId, onMessage }) => {
+    const { user } = useAuth();
     const [details, setDetails] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
@@ -63,13 +65,15 @@ const StudentDetailsModal: React.FC<StudentDetailsModalProps> = ({ isOpen, onClo
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button
-                            onClick={() => onMessage(studentId)}
-                            className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors"
-                            title="إرسال رسالة"
-                        >
-                            <Mail className="w-5 h-5" />
-                        </button>
+                        {user?.role === 'supervisor' && onMessage && (
+                            <button
+                                onClick={() => onMessage(studentId)}
+                                className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors"
+                                title="إرسال رسالة"
+                            >
+                                <Mail className="w-5 h-5" />
+                            </button>
+                        )}
                         <button
                             onClick={onClose}
                             className="p-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-colors"
@@ -85,7 +89,7 @@ const StudentDetailsModal: React.FC<StudentDetailsModalProps> = ({ isOpen, onClo
                     <div className="overflow-y-auto p-6 space-y-8 custom-scrollbar">
 
                         {/* Personal Info Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-white/5 p-4 rounded-xl border border-white/5">
                                 <div className="flex items-center gap-2 text-gray-400 mb-2">
                                     <MapPin className="w-4 h-4" />
@@ -105,9 +109,40 @@ const StudentDetailsModal: React.FC<StudentDetailsModalProps> = ({ isOpen, onClo
                                     <Calendar className="w-4 h-4" />
                                     <span className="text-xs">تاريخ الانضمام</span>
                                 </div>
-                                <p className="text-white">{details?.user?.joinDate}</p>
+                                <p className="text-white">{details?.user?.joinDate?.split('T')[0]}</p>
+                            </div>
+                            <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                                <div className="flex items-center gap-2 text-gray-400 mb-2">
+                                    <UserCheck className="w-4 h-4 text-emerald-400" />
+                                    <span className="text-xs">المشرف المسؤول</span>
+                                </div>
+                                <p className="text-white">{details?.user?.supervisorName || 'لا يوجد'}</p>
                             </div>
                         </div>
+
+                        {/* Supervisor Info */}
+                        {details?.user?.role === 'supervisor' && (
+                            <div>
+                                <h4 className="flex items-center gap-2 text-lg font-bold text-white mb-4">
+                                    <Activity className="w-5 h-5 text-purple-400" />
+                                    بيانات المشرف
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-white/5 p-4 rounded-xl border border-white/5 border-l-4 border-l-purple-500">
+                                        <p className="text-gray-400 text-xs mb-1">الطلاب الحاليين</p>
+                                        <p className="text-2xl font-bold text-white">{details.user.studentCount || 0}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-4 rounded-xl border border-white/5 border-l-4 border-l-blue-500">
+                                        <p className="text-gray-400 text-xs mb-1">السعة القصوى</p>
+                                        <p className="text-2xl font-bold text-white">{details.user.supervisorCapacity || 0}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-4 rounded-xl border border-white/5 border-l-4 border-l-emerald-500">
+                                        <p className="text-gray-400 text-xs mb-1">الأولوية</p>
+                                        <p className="text-2xl font-bold text-white">{details.user.supervisorPriority || 0}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Enrollments */}
                         <div>

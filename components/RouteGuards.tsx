@@ -51,7 +51,21 @@ export const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children 
         return <LoadingSpinner fullScreen />;
     }
 
-    if (isAuthenticated) {
+    return <>{children}</>;
+};
+
+/**
+ * Guard for Supervisor-only routes
+ */
+export const SupervisorRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { user, isAuthenticated, isLoading } = useAuth();
+
+    if (isLoading) {
+        return <LoadingSpinner fullScreen />;
+    }
+
+    if (!isAuthenticated || (user?.role !== 'supervisor' && user?.role !== 'admin')) {
+        // Supervisors only (Admins can also see them for testing/support)
         return <Navigate to="/dashboard" replace />;
     }
 

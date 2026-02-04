@@ -67,13 +67,13 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
     : (t('sidebar.student') || 'User');
 
   return (
-    <header className="flex items-center justify-between px-10 py-6 mb-2 relative z-20">
+    <header className="flex items-center justify-between px-6 lg:px-10 py-6 mb-2 relative z-20">
       {/* Greeting Section */}
       <div className="flex flex-col">
-        <h2 className="text-3xl font-bold text-white mb-1 flex items-center gap-2">
+        <h2 className="text-xl md:text-3xl font-bold text-white mb-1 flex items-center gap-2">
           {t('header.greeting')}{' '}
-          <span className="text-emerald-400 text-glow">{firstName}</span>
-          <span className="text-2xl" role="img" aria-label="wave">👋</span>
+          <span className="text-emerald-400 text-glow truncate max-w-[100px] md:max-w-none">{firstName}</span>
+          <span className="text-xl md:text-2xl" role="img" aria-label="wave">👋</span>
         </h2>
         <p className="text-sm text-gray-400">{t('header.continueJourney')}</p>
       </div>
@@ -156,7 +156,7 @@ const Header: React.FC<HeaderProps> = memo(({ setActiveTab }) => {
 
         {/* User Profile */}
         <div
-          className="flex items-center gap-3 pl-2 cursor-pointer group"
+          className="flex items-center gap-2 md:gap-3 pl-2 cursor-pointer group"
           onClick={() => setActiveTab?.('profile')}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setActiveTab?.('profile')}
           role="button"

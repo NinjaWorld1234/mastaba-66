@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Repeat, Shuffle, ArrowRight, Maximize, Minimize, Lock, CheckCircle, FileText, Heart, ClipboardList } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, ArrowRight, Maximize, Minimize, Lock, CheckCircle, FileText, Heart, ClipboardList, Book } from 'lucide-react';
 import { Course } from '../types';
 import { useLanguage } from './LanguageContext';
 import { api } from '../services/api';
@@ -10,19 +10,28 @@ import { Quiz as QuizType, QuizResult } from '../types';
 interface PlayerProps {
   course: Course;
   onBack: () => void;
+  onPlayCourse: (course: Course) => void;
 }
 
-const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
+const Player: React.FC<PlayerProps> = ({ course, onBack, onPlayCourse }) => {
   const { t } = useLanguage();
   const { user, updateUser } = useAuth();
   const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(course.progress || 0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isCompleted, setIsCompleted] = useState(course.progress === 100);
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(0);
+
+  const episodes = useMemo(() => course.episodes && course.episodes.length > 0
+    ? course.episodes
+    : [{ id: 'default', title: course.title, videoUrl: course.videoUrl || '', orderIndex: 0, lastPosition: 0, watchedDuration: 0, completed: false }]
+    , [course]);
+
+  const currentEpisode = episodes[currentEpisodeIndex];
+  const [progress, setProgress] = useState((currentEpisode as any).progress || 0);
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [quizzes, setQuizzes] = useState<QuizType[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<QuizType | null>(null);
@@ -30,16 +39,21 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [maxTimeReached, setMaxTimeReached] = useState(0);
+  const [maxTimeReached, setMaxTimeReached] = useState((currentEpisode as any).lastPosition || 0);
   const [showSecurityAlert, setShowSecurityAlert] = useState(false);
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
+  const [hasSeeked, setHasSeeked] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [nextCourse, setNextCourse] = useState<Course | null>(null);
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
 
-  const episodes = course.episodes && course.episodes.length > 0
-    ? course.episodes
-    : [{ id: 'default', title: course.title, videoUrl: course.videoUrl || '', orderIndex: 0 }];
+  // Track the furthest episode reached to keep it unlocked even when navigating back
+  const [maxReachedIndex, setMaxReachedIndex] = useState(() => {
+    const firstUncompleted = (course.episodes || []).findIndex(ep => !ep.completed);
+    return firstUncompleted === -1 ? (course.episodes?.length || 1) - 1 : firstUncompleted;
+  });
 
-  const currentEpisode = episodes[currentEpisodeIndex];
   const videoSrc = currentEpisode.videoUrl || "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
   /** Combine episodes and quizzes into a single curriculum list */
@@ -62,6 +76,70 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
     return items;
   }, [episodes, quizzes]);
 
+  /** Save progress to backend */
+  const saveProgress = useCallback(async (isCompletedParam = false) => {
+    if (!videoRef.current || user?.role === 'admin' || user?.role === 'supervisor') return;
+
+    // Don't save if we haven't seeked to the last position yet (to avoid overwriting with 0)
+    if (!hasSeeked && (currentEpisode as any).lastPosition > 0) return;
+
+    const time = videoRef.current.currentTime;
+    const duration = videoRef.current.duration;
+
+    try {
+      await api.updateEpisodeProgress(
+        course.id,
+        currentEpisode.id,
+        isCompletedParam || isCompleted || (currentEpisode as any).completed,
+        time,
+        Math.max(time, (currentEpisode as any).watchedDuration || 0)
+      );
+    } catch (e) {
+      console.error('Failed to save progress:', e);
+    }
+  }, [course.id, currentEpisode, user?.role, hasSeeked, isCompleted]);
+
+  /** Periodic saving */
+  useEffect(() => {
+    let interval: any;
+    if (isPlaying && !activeQuiz) {
+      interval = setInterval(() => {
+        saveProgress();
+      }, 10000); // Save every 10 seconds
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, activeQuiz, saveProgress]);
+
+  /** Handle Seeking to last position */
+  const handleLoadedMetadata = () => {
+    const total = videoRef.current?.duration || 0;
+    setDuration(total);
+
+    if (!hasSeeked) {
+      const lastPos = (currentEpisode as any).lastPosition || 0;
+      // Don't seek if it's too close to the end (e.g. within 2 seconds)
+      if (lastPos > 0 && lastPos < total - 2) {
+        videoRef.current!.currentTime = lastPos;
+        setCurrentTime(lastPos);
+      }
+      setHasSeeked(true);
+    }
+  };
+
+  /** Reset seek flag when episode changes */
+  useEffect(() => {
+    setHasSeeked(false);
+    setMaxTimeReached((currentEpisode as any).lastPosition || 0);
+    setProgress((currentEpisode as any).progress || 0); // Update progress state when episode changes
+
+    // Update max reached index if we advanced
+    if (currentEpisodeIndex > maxReachedIndex) {
+      setMaxReachedIndex(currentEpisodeIndex);
+    }
+  }, [currentEpisodeIndex, maxReachedIndex]);
+
+  const [attachedBook, setAttachedBook] = useState<{ title: string, path: string } | null>(null);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -74,11 +152,30 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
           .map(r => r.quizId);
         setPassedQuizIds(passedIds);
 
+        // Fetch all courses to find the next one
+        const coursesData = await api.getCourses();
+        setAllCourses(coursesData);
+
         // Check favorite status
         if (user) {
           const favorites = await api.getFavorites(user.id);
           setIsFavorite(favorites.some((f: any) => String(f.targetId) === String(course.id) && f.type === 'course'));
         }
+
+        // Fetch attached book
+        try {
+          const bookRes = await fetch(`http://localhost:5000/api/books/course/${course.id}`);
+          if (bookRes.ok) {
+            const bookData = await bookRes.json();
+            setAttachedBook(bookData);
+          } else {
+            setAttachedBook(null); // Clear if not found
+          }
+        } catch (err) {
+          console.error("Failed to fetch book:", err);
+          setAttachedBook(null);
+        }
+
       } catch (e) {
         console.error('Error loading player data:', e);
       } finally {
@@ -87,6 +184,19 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
     };
     fetchData();
   }, [course.id]);
+
+  /** Find next course when allCourses or course changes */
+  useEffect(() => {
+    if (allCourses.length > 0 && course) {
+      const sorted = [...allCourses].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      const currentIndex = sorted.findIndex(c => String(c.id) === String(course.id));
+      if (currentIndex !== -1 && currentIndex < sorted.length - 1) {
+        setNextCourse(sorted[currentIndex + 1]);
+      } else {
+        setNextCourse(null);
+      }
+    }
+  }, [allCourses, course]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -134,7 +244,7 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       // Only students get the security alert
-      if (document.hidden && isPlaying && user?.role !== 'admin') {
+      if (document.hidden && isPlaying && user?.role !== 'admin' && user?.role !== 'supervisor') {
         setIsPlaying(false);
         setShowSecurityAlert(true);
       }
@@ -142,7 +252,7 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Prevent PrintScreen or common shortcuts for students only
-      if (e.key === 'PrintScreen' && user?.role !== 'admin') {
+      if (e.key === 'PrintScreen' && user?.role !== 'admin' && user?.role !== 'supervisor') {
         setShowSecurityAlert(true);
         e.preventDefault();
       }
@@ -162,14 +272,26 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
     }
   }, [playbackRate]);
 
-  const handleMarkComplete = async () => {
-    if (currentEpisode.id !== 'default') {
-      await api.updateEpisodeProgress(course.id, currentEpisode.id, true);
+  /** Sync muted state */
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted;
     }
+  }, [isMuted]);
+
+  const handleMarkComplete = async () => {
+    const time = videoRef.current?.currentTime || 0;
+    const duration = videoRef.current?.duration || 0;
+
+    await api.updateEpisodeProgress(
+      course.id,
+      currentEpisode.id,
+      true,
+      duration > 0 ? duration : time,
+      duration > 0 ? duration : time
+    );
 
     // Check for manual quiz at this stage
-    // A quiz at index N appears AFTER episode N (1-indexed)
-    // So if currentEpisodeIndex (0-indexed) is finished, it's (currentEpisodeIndex + 1)
     let quizToShow = quizzes.find(q => q.afterEpisodeIndex === currentEpisodeIndex + 1);
 
     // Filter out quizzes already passed
@@ -177,7 +299,7 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
       quizToShow = undefined;
     }
 
-    if (quizToShow && user?.role !== 'admin') {
+    if (quizToShow && user?.role !== 'admin' && user?.role !== 'supervisor') {
       setActiveQuiz(quizToShow);
       return;
     }
@@ -208,15 +330,15 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
   };
 
   const isEpisodeLocked = (index: number) => {
-    if (user?.role === 'admin') return false; // Admin can go anywhere
+    if (user?.role === 'admin' || user?.role === 'supervisor') return false; // Administrative roles can go anywhere
     if (index === 0) return false;
+    if (index <= maxReachedIndex) return false;
 
-    // An episode is locked if the previous one is not completed
+    // Additional check: if previous episode is completed, this one should be open
     const prevEpisode = episodes[index - 1];
-    const isPrevCompleted = prevEpisode.completed || (index - 1 < currentEpisodeIndex);
+    if (prevEpisode && prevEpisode.completed) return false;
 
-    if (index > currentEpisodeIndex) return true;
-    return false;
+    return true;
   };
 
   const formatTime = (seconds: number) => {
@@ -275,189 +397,248 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                     >
                       <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
                     </button>
+                    {/* Book Download Button */}
+                    {attachedBook && (
+                      <a
+                        href={`https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/Books/${attachedBook.path}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1 rounded-lg transition-colors text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                        title="تحميل الكتاب المرافق"
+                        download
+                      >
+                        <Book className="w-4 h-4" />
+                      </a>
+                    )}
                   </div>
                   <p className="text-violet-400 text-xs font-medium truncate">{course.instructor}</p>
                 </div>
                 <button
                   onClick={handleMarkComplete}
-                  disabled={user?.role !== 'admin' && progress < 100 && !isCompleted}
+                  disabled={user?.role !== 'admin' && user?.role !== 'supervisor' && progress < 100 && !isCompleted}
                   className={`px-3 py-1.5 rounded-lg text-white text-xs font-bold transition-all shadow-lg flex-shrink-0 flex items-center gap-1 ${user?.role !== 'admin' && progress < 100 && !isCompleted
                     ? 'bg-gray-600 cursor-not-allowed opacity-50'
                     : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
                     }`}
                 >
-                  {user?.role !== 'admin' && progress < 100 && !isCompleted ? <Lock className="w-3 h-3" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                  {user?.role !== 'admin' && user?.role !== 'supervisor' && progress < 100 && !isCompleted ? <Lock className="w-3 h-3" /> : <CheckCircle className="w-3.5 h-3.5" />}
                   {currentEpisodeIndex === episodes.length - 1 ? "إكمال" : "التالي"}
                 </button>
               </div>
 
-              {/* Progress Bar (Forced LTR) */}
-              <div className="space-y-1 group" dir="ltr">
-                <input
-                  type="range"
-                  value={progress}
-                  onChange={(e) => {
-                    const newProgress = Number(e.target.value);
-                    const newTime = (newProgress / 100) * duration;
+              {/* Next Course Button - Only if completed and passed quiz */}
+              {isCompleted && nextCourse && !nextCourse.isLocked && (
+                <button
+                  onClick={() => onPlayCourse(nextCourse)}
+                  className="w-full py-4 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-3 animate-bounce-subtle"
+                >
+                  <SkipForward className="w-5 h-5" />
+                  <span>الانتقال للمساق التالي: {nextCourse.title}</span>
+                </button>
+              )}
+            </div>
 
-                    // Admins always allow seeking, students have restrictions
-                    const isAdmin = user?.role === 'admin';
-                    if (isAdmin || newTime <= maxTimeReached || isCompleted || newTime < currentTime) {
-                      setProgress(newProgress);
-                      if (videoRef.current && duration) {
-                        videoRef.current.currentTime = newTime;
-                      }
-                    } else {
-                      // Optionally show a toast or message
-                      console.warn("Seeking forward is restricted until content is watched.");
+            {/* Progress Bar (Forced LTR) */}
+            <div className="space-y-1 group" dir="ltr">
+              <input
+                type="range"
+                value={progress}
+                onChange={(e) => {
+                  const newProgress = Number(e.target.value);
+                  const newTime = (newProgress / 100) * duration;
+
+                  const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
+                  if (isAdminOrSupervisor || newTime <= maxTimeReached || isCompleted || newTime < currentTime) {
+                    setProgress(newProgress);
+                    if (videoRef.current && duration) {
+                      videoRef.current.currentTime = newTime;
                     }
-                  }}
-                  style={{
-                    background: `linear-gradient(to right, #8b5cf6 ${progress}%, rgba(255,255,255,0.1) ${progress}%)`
-                  }}
-                  className="w-full h-1 rounded-lg appearance-none cursor-pointer hover:h-1.5 transition-all"
-                />
-                <div className="flex justify-between text-[9px] text-gray-400 font-mono">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
-
-              {/* Control Buttons (RTL Layout) */}
-              <div className="flex items-center justify-between" dir="rtl">
-                <div className="flex items-center gap-3">
-                  {/* Play/Pause */}
-                  <button
-                    onClick={() => {
-                      if (isPlaying) videoRef.current?.pause();
-                      else videoRef.current?.play();
-                      setIsPlaying(!isPlaying);
-                    }}
-                    className="w-10 h-10 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center shadow-lg transition-all hover:scale-105"
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current pl-0.5" />}
-                  </button>
-
-                  {/* Volume */}
-                  <div className="flex items-center gap-2 group">
-                    <button
-                      onClick={() => {
-                        if (videoRef.current) {
-                          videoRef.current.muted = !videoRef.current.muted;
-                        }
-                      }}
-                      className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                    >
-                      <Volume2 className="w-4 h-4" />
-                    </button>
-                    {/* Volume slider hidden on small width or made smaller? Let's keep it small */}
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      defaultValue="1"
-                      dir="ltr"
-                      onChange={(e) => {
-                        if (videoRef.current) videoRef.current.volume = Number(e.target.value);
-                      }}
-                      className="w-16 h-1 bg-white/10 rounded-lg accent-gray-400 hover:accent-white hidden sm:block"
-                    />
-                  </div>
-
-                  {/* Playback Speed */}
-                  <select
-                    value={playbackRate}
-                    onChange={(e) => setPlaybackRate(Number(e.target.value))}
-                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-violet-500"
-                    dir="ltr"
-                  >
-                    <option value="0.25">0.25x</option>
-                    <option value="0.5">0.5x</option>
-                    <option value="0.75">0.75x</option>
-                    <option value="1">1.0x</option>
-                    <option value="1.25">1.25x</option>
-                    <option value="1.5">1.5x</option>
-                    <option value="2">2.0x</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => {
-                      if (videoRef.current) {
-                        const newTime = videoRef.current.currentTime + 10;
-                        const isAdmin = user?.role === 'admin';
-                        if (isAdmin || newTime <= maxTimeReached || isCompleted) {
-                          videoRef.current.currentTime = newTime;
-                        } else {
-                          console.warn("Cannot skip forward beyond watched content.");
-                        }
-                      }
-                    }}
-                    className={`p-1.5 rounded-full transition-colors ${(user?.role === 'admin' || currentTime + 10 <= maxTimeReached || isCompleted)
-                      ? 'hover:bg-white/10 text-gray-300 hover:text-white'
-                      : 'text-gray-600 cursor-not-allowed'
-                      }`}
-                    title="+10s"
-                  >
-                    <SkipForward className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => { if (videoRef.current) videoRef.current.currentTime -= 10; }}
-                    className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                    title="-10s"
-                  >
-                    <SkipBack className="w-4 h-4" />
-                  </button>
-                  <button onClick={toggleFullscreen} className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors">
-                    {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                  </button>
-                </div>
+                  } else {
+                    console.warn("Seeking forward is restricted until content is watched.");
+                  }
+                }}
+                style={{
+                  background: `linear-gradient(to right, #8b5cf6 ${progress}%, rgba(255,255,255,0.1) ${progress}%)`
+                }}
+                className="w-full h-1 rounded-lg appearance-none cursor-pointer hover:h-1.5 transition-all"
+              />
+              <div className="flex justify-between text-[9px] text-gray-400 font-mono">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
               </div>
             </div>
 
-            {/* Curriculum Sidebar (Existing) */}
+            {/* Control Buttons (RTL Layout) */}
+            <div className="flex items-center justify-between" dir="rtl">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (isPlaying) videoRef.current?.pause();
+                    else videoRef.current?.play();
+                    setIsPlaying(!isPlaying);
+                  }}
+                  className="w-10 h-10 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center shadow-lg transition-all hover:scale-105"
+                >
+                  {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current pl-0.5" />}
+                </button>
+
+                <div className="flex items-center gap-2 group">
+                  <button
+                    onClick={() => setIsMuted(prev => !prev)}
+                    className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
+                  >
+                    {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    defaultValue="1"
+                    dir="ltr"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (videoRef.current) {
+                        videoRef.current.volume = val;
+                        if (val > 0 && isMuted) setIsMuted(false);
+                        else if (val === 0 && !isMuted) setIsMuted(true);
+                      }
+                    }}
+                    className="w-16 h-1 bg-white/10 rounded-lg accent-gray-400 hover:accent-white hidden sm:block"
+                  />
+                </div>
+
+                <select
+                  value={playbackRate}
+                  onChange={(e) => setPlaybackRate(Number(e.target.value))}
+                  className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-violet-500"
+                  dir="ltr"
+                >
+                  <option value="0.25">0.25x</option>
+                  <option value="0.5">0.5x</option>
+                  <option value="0.75">0.75x</option>
+                  <option value="1">1.0x</option>
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2.0x</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    if (videoRef.current) {
+                      const newTime = videoRef.current.currentTime + 10;
+                      const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
+                      if (isAdminOrSupervisor || newTime <= maxTimeReached || isCompleted) {
+                        videoRef.current.currentTime = newTime;
+                      } else {
+                        console.warn("Cannot skip forward beyond watched content.");
+                      }
+                    }
+                  }}
+                  className={`p-1.5 rounded-full transition-colors ${(user?.role === 'admin' || user?.role === 'supervisor' || currentTime + 10 <= maxTimeReached || isCompleted)
+                    ? 'hover:bg-white/10 text-gray-300 hover:text-white'
+                    : 'text-gray-600 cursor-not-allowed'
+                    }`}
+                  title="+10s"
+                >
+                  <SkipForward className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => { if (videoRef.current) videoRef.current.currentTime -= 10; }}
+                  className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
+                  title="-10s"
+                >
+                  <SkipBack className="w-4 h-4" />
+                </button>
+                <button onClick={toggleFullscreen} className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors">
+                  {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Curriculum Sidebar */}
             <div className="flex-1 flex flex-col min-h-0 glass-panel border border-white/5 rounded-2xl overflow-hidden">
-              {/* Header */}
               <div className="p-3 border-b border-white/5 bg-white/[0.02]">
                 <h3 className="font-bold text-white flex items-center gap-2 text-sm">
                   <FileText className="w-4 h-4 text-violet-400" />
                   منهج الدورة
                 </h3>
               </div>
-              {/* Combined Curriculum & Quizzes List */}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
                 {curriculumItems.map((item, idx) => {
                   if (item.type === 'episode') {
                     const ep = item.data;
                     const epIdx = item.index;
-                    const locked = isEpisodeLocked(epIdx);
+                    const inProgress = !ep.completed && (ep as any).watchedDuration > 0;
                     const active = epIdx === currentEpisodeIndex;
+                    const locked = isEpisodeLocked(epIdx);
+
+                    const parseDuration = (dur: string) => {
+                      if (!dur) return 0;
+                      const parts = dur.split(':').map(Number);
+                      if (parts.length === 2) return parts[0] * 60 + parts[1];
+                      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+                      return 0;
+                    };
+                    const totalSec = parseDuration(ep.duration);
 
                     return (
                       <button
                         key={`ep-${ep.id}`}
                         disabled={locked}
                         onClick={() => setCurrentEpisodeIndex(epIdx)}
-                        className={`w-full text-right p-2.5 rounded-xl transition-all flex items-start gap-3 group relative ${active ? 'bg-violet-600/20 border border-violet-500/30' :
-                          locked ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:bg-white/5 border border-transparent'
+                        className={`w-full text-right p-2.5 rounded-xl transition-all flex items-start gap-3 group relative ${active ? 'bg-violet-600/20 border border-violet-500/40 shadow-[0_0_15px_rgba(139,92,246,0.1)]' :
+                          ep.completed ? 'bg-emerald-600/5 hover:bg-emerald-600/10 border border-emerald-500/10' :
+                            inProgress ? 'bg-amber-600/5 hover:bg-amber-600/10 border border-amber-500/20' :
+                              locked ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:bg-white/5 border border-transparent'
                           }`}
                       >
-                        <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 ${active ? 'bg-violet-500 text-white' : 'bg-black/40 text-gray-400'
+                        <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${active ? 'bg-violet-500 text-white ring-2 ring-violet-500/20 animate-pulse' :
+                          ep.completed ? 'bg-emerald-500 text-white shadow-sm' :
+                            inProgress ? 'bg-amber-500 text-white shadow-sm' :
+                              'bg-black/40 text-gray-400'
                           }`}>
-                          <span className="text-[9px] font-bold">{epIdx + 1}</span>
+                          {active ? <Play className="w-2.5 h-2.5 fill-current" /> :
+                            ep.completed ? <CheckCircle className="w-3 h-3" /> :
+                              <span className="text-[9px] font-bold">{epIdx + 1}</span>}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-medium truncate ${active ? 'text-white' : 'text-gray-400'}`}>
+                          <p className={`text-xs font-medium truncate transition-colors ${active ? 'text-white font-bold' :
+                            ep.completed ? 'text-emerald-400' :
+                              inProgress ? 'text-amber-400' :
+                                'text-gray-400'
+                            }`}>
                             {ep.title}
                           </p>
-                          {ep.duration && <p className="text-[9px] text-gray-500 mt-0.5">{ep.duration}</p>}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {ep.duration && <p className={`text-[9px] ${ep.completed ? 'text-emerald-600/60' : inProgress ? 'text-amber-600/60' : 'text-gray-500'}`}>{ep.duration}</p>}
+                            {inProgress && totalSec > 0 && (
+                              <div className="flex-1 h-0.5 bg-white/5 rounded-full overflow-hidden max-w-[40px]">
+                                <div
+                                  className="h-full bg-amber-500 rounded-full"
+                                  style={{ width: `${Math.min(100, Math.floor(((ep as any).watchedDuration / totalSec) * 100))}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
                         {locked ? (
                           <Lock className="w-3 h-3 text-gray-600 mt-1" />
                         ) : active ? (
-                          <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                          <div className="flex flex-col items-center gap-0.5 mt-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-ping" />
+                            <span className="text-[7px] text-violet-400 font-bold uppercase tracking-tighter">الآن</span>
+                          </div>
+                        ) : ep.completed ? (
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="text-[8px] text-emerald-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">مكتمل</span>
+                          </div>
+                        ) : inProgress ? (
+                          <div className="mt-1">
+                            <Repeat className="w-3 h-3 text-amber-500 opacity-60" />
+                          </div>
                         ) : null}
                       </button>
                     );
@@ -465,7 +646,6 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                     const quiz = item.data;
                     const isPassed = passedQuizIds.includes(quiz.id);
                     const afterEpIdx = quiz.afterEpisodeIndex || 0;
-                    // A quiz is locked if the episode it follows is not completed (or if it's the current one and not yet finished)
                     const isAdmin = user?.role === 'admin';
                     const isLocked = !isAdmin && afterEpIdx > 0 && isEpisodeLocked(afterEpIdx);
 
@@ -536,18 +716,21 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                 key={videoSrc}
                 ref={videoRef}
                 src={videoSrc}
-                // crossOrigin="anonymous" // Removed to avoid CORS issues on public R2 links
                 playsInline
                 preload="metadata"
                 controlsList="nodownload"
                 onContextMenu={(e) => e.preventDefault()}
                 className={`max-h-[70vh] w-auto max-w-full mx-auto block transition-opacity duration-300 ${videoLoading ? 'opacity-0' : 'opacity-100'}`}
                 onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onPause={() => {
+                  setIsPlaying(false);
+                  saveProgress();
+                }}
                 onTimeUpdate={handleTimeUpdate}
                 onWaiting={() => setVideoLoading(true)}
                 onPlaying={() => setVideoLoading(false)}
                 onCanPlay={() => setVideoLoading(false)}
+                onLoadedMetadata={handleLoadedMetadata}
                 onError={() => {
                   setVideoError(true);
                   setVideoLoading(false);
@@ -556,10 +739,8 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                   setIsPlaying(false);
                   handleMarkComplete();
                 }}
-                onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
               />
 
-              {/* Center Play Overlay */}
               {!isPlaying && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors cursor-pointer" onClick={() => setIsPlaying(true)}>
                   <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20 group-hover:scale-110 transition-transform">
@@ -568,16 +749,14 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
                 </div>
               )}
 
-              {/* Fullscreen Overlay Controls (Exit Button) */}
               {isFullscreen && (
                 <div className="absolute top-6 left-6 z-50 animate-fade-in">
                   <button
                     onClick={toggleFullscreen}
                     className="bg-black/40 hover:bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all border border-white/10 shadow-lg group-hover:opacity-100 opacity-0 transition-opacity duration-3000 delay-1000"
-                    // Make it fade out after inactivity? For now just show on hover of container
-                    style={{ opacity: 1 }} // Force visible for now or use CSS group-hover
+                    style={{ opacity: 1 }}
                   >
-                    <Minimize className="w-5 h-5" />
+                    <Minimize className="w-4 h-5" />
                     <span className="text-sm font-bold">تصغير الشاشة</span>
                   </button>
                 </div>
@@ -587,7 +766,6 @@ const Player: React.FC<PlayerProps> = ({ course, onBack }) => {
         </div>
       )}
 
-      {/* Security Alert Overlay */}
       {showSecurityAlert && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 animate-fade-in backdrop-blur-md">
           <div className="bg-red-600/20 border border-red-500/50 p-8 rounded-3xl max-w-md text-center space-y-4">

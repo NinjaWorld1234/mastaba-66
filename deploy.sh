@@ -6,7 +6,7 @@ mkdir -p $APP_DIR
 cd $APP_DIR
 
 echo ">>> Unzipping updated application (Patch)..."
-unzip -o deploy_v3_r2_patch.zip
+unzip -o deploy_production_latest.zip
 
 echo ">>> Building and starting Docker container..."
 docker compose up -d --build

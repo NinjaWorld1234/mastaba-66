@@ -16,24 +16,129 @@ if (!SECRET_KEY) {
 // Initialize Database
 initDatabase();
 
+// Start Background Services
+const { startBackupScheduler } = require('./server/services/backupService.cjs');
+startBackupScheduler();
+
 const app = express();
 
-// Middleware
-app.use(cors());
+// ============================================================================
+// SECURITY: Restricted CORS Configuration
+// ============================================================================
+const allowedOrigins = [
+    'http://localhost:5000',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:5176',
+    'https://mastaba.myf-online.com',
+    'https://myf-online.com',
+    'https://www.myf-online.com',
+    'http://147.93.62.42:3001', 'http://147.93.62.42',
+    process.env.FRONTEND_URL
+].filter(Boolean);
+
+console.log('[Auth] Allowed Origins:', allowedOrigins);
+
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, Postman, server-to-server)
+        if (!origin) return callback(null, true);
+
+        // Normalize origin (remove trailing slash)
+        const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+
+        const isAllowed = allowedOrigins.some(ao => {
+            const normalizedAo = ao.endsWith('/') ? ao.slice(0, -1) : ao;
+            return normalizedOrigin === normalizedAo;
+        });
+
+        if (isAllowed) {
+            callback(null, true);
+        } else {
+            console.warn(`[CORS] Blocked request from origin: "${origin}" (Normalized: "${normalizedOrigin}")`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+app.use(cors(corsOptions));
+
+// ============================================================================
+// SECURITY: Rate Limiting
+// ============================================================================
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 1000; // Increased to 1000 for smoother development
+
+const rateLimiter = (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+
+    // Clean old entries
+    if (!rateLimitStore.has(ip)) {
+        rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    } else {
+        const entry = rateLimitStore.get(ip);
+        if (now > entry.resetTime) {
+            // Reset window
+            rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+        } else {
+            entry.count++;
+            if (entry.count > MAX_REQUESTS_PER_WINDOW) {
+                console.warn(`[RATE_LIMIT] Too many requests from IP: ${ip}`);
+                return res.status(429).json({
+                    error: 'Too many requests. Please try again later.',
+                    code: 'RATE_LIMIT_EXCEEDED',
+                    retryAfter: Math.ceil((entry.resetTime - now) / 1000)
+                });
+            }
+        }
+    }
+    next();
+};
+
+// Apply rate limiting to all routes
+app.use(rateLimiter);
+
+// ============================================================================
+// Body Parsing Middleware
+// ============================================================================
 app.use(express.json({ limit: '100mb' }));
 app.use(express.raw({ type: ['application/octet-stream', 'audio/webm', 'audio/ogg', 'video/webm', 'video/mp4', 'image/*'], limit: '100mb' }));
 
-// Request Logger (Helpful for Hostinger Debugging)
+// ============================================================================
+// SECURITY: Enhanced Request Logger
+// ============================================================================
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    const timestamp = new Date().toISOString();
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    console.log(`[${timestamp}] [${ip}] ${req.method} ${req.url}`);
+
+    // Log response time
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        if (duration > 1000) {
+            console.warn(`[SLOW_REQUEST] ${req.method} ${req.url} took ${duration}ms`);
+        }
+    });
+
     next();
 });
 
-// Authentication Middleware (Exposed for central router index if needed)
-const { authenticateToken } = require('./server/middleware.cjs');
+// ============================================================================
+// Authentication Middleware (Exposed for routes)
+// ============================================================================
+const { authenticateToken, requireAdmin, requireAdminOrSupervisor } = require('./server/middleware.cjs');
 
-
-// Health check endpoint
+// ============================================================================
+// Health check endpoint (Public)
+// ============================================================================
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'UP',
@@ -42,67 +147,33 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Manual DB Fix Route (Detailed password reset)
-app.get('/api/fix-db', (req, res) => {
-    try {
-        const bcrypt = require('bcryptjs');
-        const checkUser = db.prepare('SELECT id FROM users WHERE email = ?');
-        const insertUser = db.prepare(`
-            INSERT INTO users (id, email, password, name, role, joinDate, emailVerified, avatar)
-            VALUES (@id, @email, @password, @name, @role, @joinDate, @emailVerified, @avatar)
-        `);
-        const updateUserPass = db.prepare('UPDATE users SET password = ? WHERE email = ?');
+// ============================================================================
+// REMOVED: /api/fix-db endpoint was a security vulnerability
+// Password resets should be done through proper admin channels
+// ============================================================================
 
-        let fixed = [];
-        const usersToFix = [
-            { id: "1", email: "ahmed@example.com", pass: "123456", name: "أحمد محمد", role: "student" },
-            { id: "2", email: "admin@example.com", pass: "admin123", name: "مدير النظام", role: "admin" }
-        ];
-
-        for (const u of usersToFix) {
-            const hash = bcrypt.hashSync(u.pass, 10);
-            const existing = checkUser.get(u.email);
-            if (existing) {
-                updateUserPass.run(hash, u.email);
-                fixed.push(u.email + ' (Password Reset)');
-            } else {
-                insertUser.run({
-                    id: u.id,
-                    email: u.email,
-                    password: hash,
-                    name: u.name,
-                    role: u.role,
-                    joinDate: new Date().toISOString(),
-                    emailVerified: 1,
-                    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random`
-                });
-                fixed.push(u.email + ' (Created)');
-            }
-        }
-
-        res.json({ success: true, fixed, message: 'Database default users refreshed (SQLite)' });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
+// ============================================================================
 // Centralized API Routes
+// ============================================================================
 const apiRoutes = require('./server/routes/index.cjs');
 
 // Mount API Routes with global prefix
-// Note: Individual modules handle their sub-paths
 app.use('/api', (req, res, next) => {
-    // Inject authenticateToken where needed or handle it globally for some paths
-    // For now, we mount the central router
+    // Reduced logging for production (only log path, not full debug)
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[API] ${req.method} ${req.path}`);
+    }
     next();
 }, apiRoutes);
 
+// ============================================================================
 // Static assets
+// ============================================================================
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// API 404 Handler - MUST BE AFTER apiRoutes but BEFORE SPA fallback
-// API 404 Handler - MUST BE AFTER apiRoutes but BEFORE SPA fallback
-// API 404 Handler - MUST BE AFTER apiRoutes but BEFORE SPA fallback
+// ============================================================================
+// API 404 Handler
+// ============================================================================
 app.use('/api', (req, res) => {
     res.status(404).json({
         error: `API endpoint ${req.method} ${req.path} not found`,
@@ -110,7 +181,9 @@ app.use('/api', (req, res) => {
     });
 });
 
+// ============================================================================
 // SPA Fallback - MUST BE LAST
+// ============================================================================
 app.get(/.*/, (req, res) => {
     const indexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(indexPath)) {
@@ -120,22 +193,36 @@ app.get(/.*/, (req, res) => {
     }
 });
 
+// ============================================================================
 // Global Error Handler
+// ============================================================================
 app.use((err, req, res, next) => {
-    console.error(`[ERROR] ${req.method} ${req.url}:`, err);
+    const timestamp = new Date().toISOString();
+    console.error(`[ERROR] [${timestamp}] ${req.method} ${req.url}:`, err.message);
 
+    // Don't expose internal error details in production
     const statusCode = err.status || 500;
+    const message = process.env.NODE_ENV === 'production'
+        ? 'Internal Server Error'
+        : err.message;
+
     res.status(statusCode).json({
-        error: err.message || 'Internal Server Error',
+        error: message,
         code: err.code || 'INTERNAL_ERROR',
-        timestamp: new Date().toISOString()
+        timestamp
     });
 });
 
+// ============================================================================
 // Start Server
+// ============================================================================
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`- Database: JSON File (Compatibility Mode)`);
-    console.log(`- Base URL: http://localhost:${PORT}`);
-    console.log(`- API Routes: Multi-modular Index`);
+    console.log(`\n========================================`);
+    console.log(`  Al-Mastaba Server v2.0 (Secured)`);
+    console.log(`========================================`);
+    console.log(`  Port: ${PORT}`);
+    console.log(`  Database: SQLite (WAL Mode)`);
+    console.log(`  CORS: Restricted to allowed origins`);
+    console.log(`  Rate Limit: ${MAX_REQUESTS_PER_WINDOW} req/min`);
+    console.log(`========================================\n`);
 });

@@ -11,10 +11,16 @@ router.get('/messages', async (req, res) => {
     const userId = req.user.id;
     try {
         // Filter out expired messages dynamically or rely on cleanup
+        // ALSO: Filter out complaints if the user is a student (one-way only)
+        // AND: Allow admins to see ALL complaints regardless of recipient
+        const roleFilter = req.user.role === 'student' ? 'AND (isComplaint = 0 OR isComplaint IS NULL)' : '';
+        const adminComplaintAccess = req.user.role === 'admin' ? 'OR isComplaint = 1' : '';
+
         const messages = db.prepare(`
             SELECT * FROM messages 
-            WHERE (senderId = ? OR receiverId = ?) 
+            WHERE (senderId = ? OR receiverId = ? ${adminComplaintAccess}) 
             AND (expiryDate IS NULL OR expiryDate > ?)
+            ${roleFilter}
             ORDER BY timestamp ASC
         `).all(userId, userId, new Date().toISOString());
 
@@ -46,9 +52,70 @@ router.get('/messages', async (req, res) => {
 router.get('/messages/unread', (req, res) => {
     const userId = req.user.id;
     try {
-        const result = db.prepare('SELECT COUNT(*) as count FROM messages WHERE receiverId = ? AND read = 0').get(userId);
+        // Exclude complaints from unread count for students
+        const roleFilter = req.user.role === 'student' ? 'AND (isComplaint = 0 OR isComplaint IS NULL)' : '';
+        const result = db.prepare(`SELECT COUNT(*) as count FROM messages WHERE receiverId = ? AND read = 0 ${roleFilter}`).get(userId);
         res.json({ count: result.count });
     } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get authorized contacts based on role
+router.get('/contacts', (req, res) => {
+    const userId = req.user.id;
+    const role = req.user.role;
+    console.log(`[SOCIAL_CONTACTS] Fetching for user=${userId}, role=${role}`);
+
+    try {
+        let users = [];
+        if (role === 'admin') {
+            // Admin sees all supervisors
+            const supervisors = db.prepare("SELECT id, name, role, avatar, email FROM users WHERE role = 'supervisor'").all();
+            console.log(`[SOCIAL_CONTACTS] Admin: found ${supervisors.length} supervisors`);
+
+            // Admin also sees students who have sent complaints
+            const complainingStudents = db.prepare(`
+                SELECT DISTINCT u.id, u.name, u.role, u.avatar, u.email 
+                FROM users u
+                JOIN messages m ON u.id = m.senderId
+                WHERE m.receiverId = ? AND m.isComplaint = 1
+            `).all(userId);
+            console.log(`[SOCIAL_CONTACTS] Admin: found ${complainingStudents.length} complaining students`);
+
+            users = [...supervisors, ...complainingStudents];
+        } else if (role === 'supervisor') {
+            // Supervisor sees all admins
+            const admins = db.prepare("SELECT id, name, role, avatar, email FROM users WHERE role = 'admin'").all();
+            console.log(`[SOCIAL_CONTACTS] Supervisor: found ${admins.length} admins`);
+
+            // Supervisor sees their assigned students
+            const students = db.prepare("SELECT id, name, role, avatar, email, supervisor_id FROM users WHERE role = 'student' AND supervisor_id = ?").all(userId);
+            console.log(`[SOCIAL_CONTACTS] Supervisor: found ${students.length} students`);
+
+            users = [...admins, ...students];
+        } else if (role === 'student') {
+            // Student sees all admins (for complaints)
+            const admins = db.prepare("SELECT id, name, role, avatar, email FROM users WHERE role = 'admin'").all();
+            console.log(`[SOCIAL_CONTACTS] Student: found ${admins.length} admins`);
+
+            // Student sees their assigned supervisor
+            const student = db.prepare('SELECT supervisor_id FROM users WHERE id = ?').get(userId);
+            let supervisors = [];
+            if (student && student.supervisor_id) {
+                supervisors = db.prepare('SELECT id, name, role, avatar, email FROM users WHERE id = ?').all(student.supervisor_id);
+                console.log(`[SOCIAL_CONTACTS] Student: found supervisor=${student.supervisor_id}`);
+            }
+
+            users = [...admins, ...supervisors];
+        }
+
+        // De-duplicate if necessary (though SQL above shouldn't produce much dups except maybe admins)
+        const uniqueUsers = Array.from(new Map(users.map(u => [u.id, u])).values());
+        console.log(`[SOCIAL_CONTACTS] Returning ${uniqueUsers.length} total contacts`);
+        res.json(uniqueUsers);
+    } catch (e) {
+        console.error('[SOCIAL_CONTACTS_ERROR]:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
@@ -88,18 +155,61 @@ router.delete('/messages/cleanup', async (req, res) => {
 });
 
 router.post('/messages', (req, res) => {
-    console.log('[Social API] POST /messages request received');
-    const { receiverId, content, attachmentUrl, attachmentType, attachmentName } = req.body;
+    const { receiverId, content, attachmentUrl, attachmentType, attachmentName, isComplaint } = req.body;
     const senderId = req.user.id;
-
-    console.log('Sending message:', { senderId, receiverId, content, attachmentType });
+    const senderRole = req.user.role;
 
     try {
+        // --- Role-Based Messaging Validation ---
+
+        // Fetch receiver details to check their role
+        const receiver = db.prepare('SELECT role, supervisor_id FROM users WHERE id = ?').get(receiverId);
+        if (!receiver) return res.status(404).json({ error: 'Receiver not found' });
+
+        // Rule 1: Student validation
+        if (senderRole === 'student') {
+            if (isComplaint) {
+                // Complaints must go to an Admin
+                if (receiver.role !== 'admin') {
+                    return res.status(403).json({ error: 'الشكاوى ترسل للمدير فقط' });
+                }
+            } else {
+                // Regular messages must go to their assigned supervisor
+                const student = db.prepare('SELECT supervisor_id FROM users WHERE id = ?').get(senderId);
+                if (!student || student.supervisor_id !== receiverId) {
+                    return res.status(403).json({ error: 'يمكنك مراسلة مشرفك المباشر فقط' });
+                }
+            }
+        }
+
+        // Rule 2: Supervisor validation
+        if (senderRole === 'supervisor') {
+            const isTargetAdmin = receiver.role === 'admin';
+            const isTargetMyStudent = receiver.role === 'student' && receiver.supervisor_id === senderId;
+
+            if (!isTargetAdmin && !isTargetMyStudent) {
+                return res.status(403).json({ error: 'يمكنك مراسلة المدير أو طلابك فقط' });
+            }
+        }
+
+        // Rule 3: Admin validation
+        if (senderRole === 'admin') {
+            // Admin cannot reply to complaints (student is the receiver)
+            if (receiver.role === 'student' && isComplaint) {
+                return res.status(403).json({ error: 'لا يمكن الرد على الشكاوى والاقتراحات' });
+            }
+
+            // Admins can only start/continue conversations with Supervisors
+            // (Unless it's a specific "message student" feature which isn't requested here)
+            if (receiver.role !== 'supervisor' && receiver.role !== 'admin') {
+                return res.status(403).json({ error: 'يمكن للمدير مراسلة المشرفين فقط' });
+            }
+        }
+
         const id = 'msg_' + Date.now();
         const timestamp = new Date().toISOString();
 
         let expiryDate = null;
-        // If there is an attachment (Voice, Image, PDF), set expiry to 7 days
         if (attachmentUrl || attachmentType) {
             const date = new Date();
             date.setDate(date.getDate() + 7);
@@ -107,22 +217,24 @@ router.post('/messages', (req, res) => {
         }
 
         db.prepare(`
-            INSERT INTO messages (id, senderId, receiverId, content, read, timestamp, attachmentUrl, attachmentType, attachmentName, expiryDate)
-            VALUES (@id, @senderId, @receiverId, @content, @read, @timestamp, @attachmentUrl, @attachmentType, @attachmentName, @expiryDate)
+            INSERT INTO messages (id, senderId, receiverId, content, read, timestamp, attachmentUrl, attachmentType, attachmentName, expiryDate, isComplaint)
+            VALUES (@id, @senderId, @receiverId, @content, @read, @timestamp, @attachmentUrl, @attachmentType, @attachmentName, @expiryDate, @isComplaint)
         `).run({
             id,
             senderId,
             receiverId,
-            content: content || '', // Content might be empty if just sending a file
+            content: content || '',
             read: 0,
             timestamp,
             attachmentUrl: attachmentUrl || null,
             attachmentType: attachmentType || null,
             attachmentName: attachmentName || null,
-            expiryDate
+            expiryDate,
+            isComplaint: isComplaint ? 1 : 0
         });
-        res.status(201).json({ id, senderId, receiverId, content, read: 0, timestamp, attachmentUrl, attachmentType, attachmentName, expiryDate });
+        res.status(201).json({ id, senderId, receiverId, content, read: 0, timestamp, attachmentUrl, attachmentType, attachmentName, expiryDate, isComplaint });
     } catch (e) {
+        console.error('[MESSAGING_SEND_ERROR]:', e.message);
         res.status(500).json({ error: e.message });
     }
 });

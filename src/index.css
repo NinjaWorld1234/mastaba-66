@@ -57,6 +57,14 @@
   .skip-link:focus {
     top: 0;
   }
+
+  /* Fix for invisible dropdown text in dark mode */
+  select,
+  option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: 8px;
+  }
 }
 
 /* ============================================================================
@@ -275,4 +283,27 @@
   --text-secondary: #d1d5db;
   --accent-primary: #10b981;
   --accent-gold: #fbbf24;
+}
+
+/* Dropdown appearance overrides for themes */
+.theme-day select,
+.theme-day option {
+  background-color: #ffffff !important;
+  color: #064e3b !important;
+}
+
+.theme-night select,
+.theme-night option {
+  background-color: #0a2f2a !important;
+  color: #ffffff !important;
+}
+
+/* Mobile Scaling - 20% smaller (80% zoom) */
+@media (max-width: 768px) {
+  body {
+    zoom: 0.8;
+    /* Ensure scrollbars are visible when needed */
+    overflow-x: auto;
+    overflow-y: auto;
+  }
 }

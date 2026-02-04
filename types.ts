@@ -29,7 +29,7 @@ export const DEFAULT_PAGE_SIZE = 20;
 // ============================================================================
 
 /** User role types */
-export type UserRole = 'student' | 'admin';
+export type UserRole = 'student' | 'admin' | 'supervisor';
 
 /** User account status */
 export type UserStatus = 'active' | 'inactive' | 'pending';
@@ -80,6 +80,16 @@ export interface User {
   age?: number;
   /** Gender */
   gender?: 'male' | 'female';
+  /** Total number of lessons completed by the student */
+  completedLessons?: number;
+  /** Comma-separated list of active course titles */
+  activeCourses?: string;
+  /** ID of the supervisor assigned to this student */
+  supervisorId?: string;
+  /** Max student capacity (for supervisors) */
+  supervisorCapacity?: number;
+  /** Assignment priority (for supervisors) */
+  supervisorPriority?: number;
 }
 
 // ============================================================================
@@ -131,8 +141,27 @@ export interface Course {
   passingScore?: number;
   /** Number of lessons between automated quizzes */
   quizFrequency?: number;
-  /** Episodes in this course */
+  /** Episode in this course */
   episodes?: Episode[];
+  /** Associated folder identifier */
+  folderId?: string;
+  /** Course display order index */
+  orderIndex?: number;
+  /** Whether the course is currently locked for the student */
+  isLocked?: boolean;
+  /** Whether the student is enrolled in this course */
+  isEnrolled?: boolean;
+}
+
+/**
+ * Interface for course folders
+ */
+export interface CourseFolder {
+  id: string;
+  name: string;
+  thumbnail: string;
+  orderIndex: number;
+  courseCount?: number;
 }
 
 /**
@@ -271,7 +300,7 @@ export interface Certificate {
 // ============================================================================
 
 /** Announcement target audience */
-export type AnnouncementTarget = 'all' | 'students' | 'instructors';
+export type AnnouncementTarget = 'all' | 'students' | 'instructors' | 'supervisors';
 
 /** Announcement priority level */
 export type AnnouncementPriority = 'low' | 'medium' | 'high';
@@ -480,6 +509,7 @@ export interface Message {
   attachmentType?: 'audio' | 'image' | 'file';
   attachmentName?: string;
   expiryDate?: string;
+  isComplaint?: number;
   otherUser?: {
     name: string;
     avatar: string;

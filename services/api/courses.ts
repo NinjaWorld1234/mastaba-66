@@ -16,7 +16,7 @@ export const coursesApi = {
 
     updateCourseProgress: async (courseId: string, progress: number): Promise<void> => {
         const token = getAuthToken();
-        await fetch('/api/episode-progress', {
+        await fetch('/api/courses/episode-progress', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -26,15 +26,15 @@ export const coursesApi = {
         });
     },
 
-    updateEpisodeProgress: async (courseId: string, episodeId: string, completed: boolean): Promise<void> => {
+    updateEpisodeProgress: async (courseId: string, episodeId: string, completed: boolean, lastPosition?: number, watchedDuration?: number): Promise<void> => {
         const token = getAuthToken();
-        await fetch('/api/episode-progress', {
+        await fetch('/api/courses/episode-progress', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ courseId, episodeId, completed })
+            body: JSON.stringify({ courseId, episodeId, completed, lastPosition, watchedDuration })
         });
     },
 
@@ -78,5 +78,21 @@ export const coursesApi = {
             }
         });
         if (!response.ok) throw new Error('Failed to delete course');
+    },
+
+    enroll: async (courseId: string): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/courses/enroll', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ courseId })
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to enroll');
+        }
     }
 };

@@ -233,9 +233,9 @@ const AdminAnnouncements: React.FC = () => {
                                             onChange={e => setFormData({ ...formData, target: e.target.value as any })}
                                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
                                         >
-                                            <option value="all">الجميع</option>
-                                            <option value="students">الطلاب فقط</option>
-                                            <option value="instructors">المعلمين فقط</option>
+                                            <option value="all" className="text-black">الجميع</option>
+                                            <option value="students" className="text-black">الطلاب فقط</option>
+                                            <option value="supervisors" className="text-black">المشرفين فقط</option>
                                         </select>
                                     </div>
                                     <div>

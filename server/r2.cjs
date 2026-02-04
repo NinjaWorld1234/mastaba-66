@@ -1,11 +1,12 @@
+require('dotenv').config();
 const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, CopyObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // Cloudflare R2 Credentials
-const R2_ACCOUNT_ID = '615072ed401f3469aa1e91d7bceb2180';
-const R2_ACCESS_KEY_ID = '799ae4abf146df8de96cb6ab17c93fd8';
-const R2_SECRET_ACCESS_KEY = '2a7491cfc921342e42357c47cbdbf6aff652cbfe7d728f387b74b86859cdef7e';
-const R2_BUCKET_NAME = 'myf-videos';
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'myf-videos';
 const R2_PUBLIC_DOMAIN = process.env.R2_PUBLIC_DOMAIN || ''; // If they have a custom domain
 
 const s3Client = new S3Client({
@@ -23,8 +24,13 @@ const s3Client = new S3Client({
  * @param {string} fileType 
  * @returns {Promise<{uploadUrl: string, key: string, publicUrl: string}>}
  */
-async function generateUploadUrl(fileName, fileType) {
-    const key = `uploads/${Date.now()}-${fileName.replace(/\s+/g, '-')}`;
+async function generateUploadUrl(fileName, fileType, folderPath = 'uploads/') {
+    // Ensure folderPath ends with / and doesn't start with /
+    let prefix = folderPath.replace(/^\/+/, '');
+    if (prefix && !prefix.endsWith('/')) prefix += '/';
+    if (!prefix) prefix = 'uploads/';
+
+    const key = `${prefix}${Date.now()}-${fileName.replace(/\s+/g, '-')}`;
 
     const command = new PutObjectCommand({
         Bucket: R2_BUCKET_NAME,
@@ -64,8 +70,13 @@ async function generateDownloadUrl(key) {
  * @param {string} fileType 
  * @returns {Promise<string>} publicUrl
  */
-async function uploadBufferToR2(buffer, fileName, fileType) {
-    const key = `uploads/${Date.now()}-${fileName.replace(/\s+/g, '-')}`;
+async function uploadBufferToR2(buffer, fileName, fileType, folderPath = 'uploads/') {
+    // Ensure folderPath ends with / and doesn't start with /
+    let prefix = folderPath.replace(/^\/+/, '');
+    if (prefix && !prefix.endsWith('/')) prefix += '/';
+    if (!prefix) prefix = 'uploads/';
+
+    const key = `${prefix}${Date.now()}-${fileName.replace(/\s+/g, '-')}`;
 
     const command = new PutObjectCommand({
         Bucket: R2_BUCKET_NAME,

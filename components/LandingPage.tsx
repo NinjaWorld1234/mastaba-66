@@ -6,7 +6,7 @@ import { Sun, Moon } from 'lucide-react';
 interface LandingPageProps {
   onLoginClick: () => void;
   onSignupClick: () => void;
-  onQuickLogin?: (role: 'student' | 'admin') => void;
+  onQuickLogin?: (role: 'student' | 'admin' | 'supervisor') => void;
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, onQuickLogin }) => {
@@ -59,11 +59,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
       {/* END: Top Bar */}
 
       {/* BEGIN: Main Content */}
-      <main className="relative z-10 flex flex-col items-center justify-center flex-grow w-full px-4 py-8">
+      <main className="relative z-10 flex flex-col items-center justify-center flex-grow w-full px-4 py-6 md:py-12 overflow-y-auto">
         {/* Glassmorphism Card */}
-        <div className="glass-panel-heavy rounded-3xl p-6 md:p-12 w-full max-w-3xl flex flex-col items-center text-center shadow-2xl border-t border-white/30 flex-shrink-0" data-purpose="main-card">
-          {/* Card Language Toggle (Absolute) */}
-          <div className="absolute -top-5 right-8 glass-panel rounded-full px-1 py-1 flex items-center gap-1 border border-white/30 bg-[#4a7266]">
+        <div className="glass-panel-heavy rounded-3xl p-5 md:p-12 w-full max-w-3xl flex flex-col items-center text-center shadow-2xl border-t border-white/30" data-purpose="main-card">
+          {/* Card Language Toggle (Responsive positioning) */}
+          <div className="absolute -top-4 right-4 md:-top-5 md:right-8 glass-panel rounded-full px-1 py-1 flex items-center gap-1 border border-white/30 bg-[#4a7266]">
             <button
               onClick={() => setLanguage('ar')}
               className={`px-3 text-sm font-medium transition ${language === 'ar' ? 'text-white' : 'text-white/60'}`}
@@ -86,10 +86,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
             />
           </div>
           {/* Text Content */}
-          <h1 className="font-bold text-white mb-1 text-[1.8rem]">{t('landing.brandName')}</h1>
-          <h2 className="text-white/70 font-medium mb-6 text-[1.1rem]">{t('landing.subtitle')}</h2>
-          <div className="mb-6">
-            <h3 className="text-6xl md:text-7xl font-extrabold text-gradient-gold mb-2 leading-tight font-cairo py-2">{t('landing.comingSoon')}</h3>
+          <h1 className="font-bold text-white mb-1 text-[1.4rem] md:text-[1.8rem]">{t('landing.brandName')}</h1>
+          <h2 className="text-white/70 font-medium mb-4 md:mb-6 text-sm md:text-[1.1rem]">{t('landing.subtitle')}</h2>
+          <div className="mb-4 md:mb-6">
+            <h3 className="text-4xl sm:text-5xl md:text-7xl font-extrabold text-gradient-gold mb-2 leading-tight font-cairo py-2">{t('landing.comingSoon')}</h3>
           </div>
           <p className="text-[#e0e0e0] text-sm md:text-lg leading-relaxed max-w-lg mb-10 text-center">
             {t('landing.description')}
@@ -130,6 +130,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
               <i className="fas fa-user-shield"></i>
               <span>{t('landing.loginAsAdmin')}</span>
             </button>
+            <button
+              onClick={() => onQuickLogin('supervisor')}
+              className="w-full md:w-auto px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-full text-sm font-bold transition-colors flex items-center justify-center gap-2 border border-amber-400/30 shadow-lg"
+            >
+              <i className="fas fa-user-check"></i>
+              <span>{t('landing.loginAsSupervisor')}</span>
+            </button>
           </div>
         )}
         {/* Small hint text below card */}
@@ -137,10 +144,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onSignupClick, 
       {/* END: Main Content */}
 
       {/* BEGIN: Footer */}
-      <footer className="relative w-full z-10">
+      <footer className="relative w-full z-10 mt-auto">
         {/* SVG Curved Notch */}
         <svg
-          className="absolute bottom-full left-0 w-full h-20 md:h-16"
+          className="absolute bottom-full left-0 w-full h-12 md:h-16"
           viewBox="0 0 400 60"
           preserveAspectRatio="none"
           xmlns="http://www.w3.org/2000/svg"

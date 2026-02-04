@@ -68,7 +68,11 @@ export const usersApi = {
             },
             body: JSON.stringify(userData)
         });
-        if (!response.ok) throw new Error('Failed to create user');
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Failed to create user');
+        }
         return await response.json();
     },
 
@@ -110,6 +114,15 @@ export const usersApi = {
             body: JSON.stringify({ targetId, type })
         });
         if (!response.ok) return null;
+        return await response.json();
+    },
+
+    getUserDetails: async (id: string): Promise<any> => {
+        const token = getAuthToken();
+        const response = await fetch(`/api/users/${id}/details?_t=${Date.now()}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to fetch user details');
         return await response.json();
     }
 };

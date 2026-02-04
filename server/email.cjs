@@ -1,12 +1,22 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
-// Initialize Resend with API key from environment (optional)
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+// Configure Nodemailer transporter for Outlook
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp-mail.outlook.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: false, // true for 465, false for others
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  tls: {
+    ciphers: 'SSLv3'
+  }
+});
 
-// Log warning if no API key
-if (!RESEND_API_KEY) {
-  console.warn('[EMAIL] Resend API key not configured. Email sending will be simulated.');
+// Log warning if no credentials
+if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  console.warn('[EMAIL] SMTP credentials not configured. Email sending will fail/simulate.');
 }
 
 /**
@@ -24,14 +34,14 @@ function generateOTP() {
  */
 async function sendVerificationEmail(email, name, otp) {
   try {
-    // If Resend is not configured, simulate sending
-    if (!resend) {
+    // If SMTP is not configured, simulate sending
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.log(`[EMAIL SIMULATION] Would send OTP ${otp} to ${email}`);
       return { success: true, data: { simulated: true, otp } };
     }
 
-    const { data, error } = await resend.emails.send({
-      from: 'المصطبة العلمية <onboarding@resend.dev>',
+    const info = await transporter.sendMail({
+      from: `"المصطبة العلمية" <${process.env.SMTP_USER}>`,
       to: email,
       subject: 'رمز التحقق من بريدك الإلكتروني - المصطبة العلمية',
       html: `
@@ -64,13 +74,9 @@ async function sendVerificationEmail(email, name, otp) {
       `
     });
 
-    if (error) {
-      console.error('Email sending error:', error);
-      return { success: false, error: error.message };
-    }
 
-    console.log('Verification email sent:', data);
-    return { success: true, data };
+    console.log('Verification email sent:', info.messageId);
+    return { success: true, data: info };
   } catch (err) {
     console.error('Email service error:', err);
     return { success: false, error: err.message };

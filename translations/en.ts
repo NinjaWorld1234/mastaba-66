@@ -9,6 +9,7 @@ export const en = {
         memberLogin: 'Member Login',
         loginAsStudent: 'Login as Student',
         loginAsAdmin: 'Login as Admin',
+        loginAsSupervisor: 'Login as Supervisor',
     },
 
     // Header

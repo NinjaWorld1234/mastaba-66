@@ -60,6 +60,9 @@ export const authApi = {
                     nameEn: data.user.nameEn || data.user.name,
                     joinDate: data.user.joinDate,
                     emailVerified: !!data.user.emailVerified,
+                    supervisorId: data.user.supervisor_id || data.user.supervisorId, // Ensure both cases work
+                    supervisorCapacity: data.user.supervisor_capacity || data.user.supervisorCapacity,
+                    supervisorPriority: data.user.supervisor_priority || data.user.supervisorPriority,
                 };
                 localStorage.setItem(STORAGE_PREFIX + 'currentUser', JSON.stringify(user));
                 localStorage.setItem('authToken', data.accessToken);
@@ -100,7 +103,13 @@ export const authApi = {
             const data = await response.json();
             if (!response.ok) return { success: false, user: null, error: data.errorAr || data.error };
 
-            const user = { ...data.user, access_token: data.accessToken };
+            const user = {
+                ...data.user,
+                access_token: data.accessToken,
+                supervisorId: data.user.supervisor_id || data.user.supervisorId,
+                supervisorCapacity: data.user.supervisor_capacity || data.user.supervisorCapacity,
+                supervisorPriority: data.user.supervisor_priority || data.user.supervisorPriority,
+            };
             localStorage.setItem(STORAGE_PREFIX + 'currentUser', JSON.stringify(user));
             return { success: true, user, error: null };
         } catch (error: any) {

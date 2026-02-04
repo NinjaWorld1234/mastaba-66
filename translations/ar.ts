@@ -9,6 +9,7 @@ export const ar = {
         memberLogin: 'دخول الأعضاء',
         loginAsStudent: 'دخول كطالب',
         loginAsAdmin: 'دخول كأدمن',
+        loginAsSupervisor: 'دخول كمشرف',
     },
 
     // Header
@@ -42,9 +43,9 @@ export const ar = {
     admin: {
         dashboard: 'لوحة القيادة',
         students: 'الطلاب',
-        audioCourses: 'الدورات الصوتية',
+        audioCourses: 'الدورات',
         reports: 'التقارير',
-        contentManagement: 'إدارة المحتوى',
+        library: 'المكتبة', // Renamed from contentManagement
         announcements: 'الإعلانات',
         quizManagement: 'الاختبارات',
         activityLog: 'سجل النشاط',
@@ -65,7 +66,7 @@ export const ar = {
         draft: 'مسودة',
         save: 'حفظ',
         cancel: 'إلغاء',
-        searchPlaceholder: 'بحث عن دورة...',
+        searchPlaceholder: 'بحث...',
         allStatuses: 'جميع الحالات',
         filter: 'تصفية',
         totalCourses: 'إجمالي الدورات',
@@ -73,6 +74,16 @@ export const ar = {
         totalHours: 'إجمالي الساعات',
         totalListeners: 'إجمالي المستمعين',
         clickToAdd: 'اضغط هنا لإنشاء دورة صوتية جديدة',
+
+        // Library specific
+        addBook: 'إضافة كتاب',
+        editBook: 'تعديل كتاب',
+        deleteBook: 'حذف كتاب',
+        bookTitle: 'عنوان الكتاب',
+        bookPath: 'مسار الملف (داخل مجلد Books)',
+        linkedCourse: 'المساق المرتبط',
+        noCourse: 'غير مرتبط',
+        selectCourse: 'اختر مساقاً...',
     },
 
     // Common
@@ -115,12 +126,18 @@ export const ar = {
         latestAchievements: 'آخر الإنجازات',
         viewAll: 'عرض الكل',
         continueLearning: 'استكمل التعلم',
+        availableCourses: 'بعض المساقات المتوفرة في المصطبة العلمية',
         fullLibrary: 'المكتبة كاملة',
         courseProgress: 'تقدم المنهج',
         completed: 'إنجاز',
         liveEvent: 'مباشر',
         fiqhCouncil: 'مجلس الفقه المالكي',
         sheikhName: 'الشيخ عبدالله بن بيه',
+        complaintsBox: 'صندوق الاقتراحات والشكاوي',
+        complaintsPlaceholder: 'اكتب شكواك أو اقتراحك هنا (سيصل للمدير فقط)...',
+        sendComplaint: 'إرسال الشكوى',
+        complaintSuccess: 'تم إرسال شكواك بنجاح. شكراً لك.',
+        complaintError: 'فشل إرسال الشكوى. حاول مرة أخرى.'
     },
 
     // Settings

@@ -1,36 +1,100 @@
+/**
+ * User Routes Module
+ * 
+ * Handles user CRUD operations with proper authentication and authorization.
+ * 
+ * @module server/routes/users
+ */
+
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const { db } = require('../database.cjs');
+const { authenticateToken, requireAdmin, requireOwnerOrAdmin, requireAdminOrSupervisor } = require('../middleware.cjs');
 
-// Get current user list (Admin)
-router.get('/', (req, res) => {
+// ============================================================================
+// SECURITY: Whitelist of allowed update fields (prevents SQL injection)
+// ============================================================================
+const ALLOWED_UPDATE_FIELDS = [
+    'name', 'nameEn', 'avatar', 'status', 'points', 'level', 'streak',
+    'whatsapp', 'country', 'age', 'gender', 'educationLevel',
+    'supervisor_id', 'supervisor_capacity', 'supervisor_priority'
+];
+
+// ============================================================================
+// Get all users (Admin Only)
+// ============================================================================
+router.get('/', authenticateToken, requireAdmin, (req, res) => {
     try {
-        const users = db.prepare('SELECT id, name, email, role, points, level, joinDate, status FROM users').all();
+        const users = db.prepare(`
+            SELECT u.id, u.name, u.email, u.role, u.points, u.level, u.joinDate, u.status,
+            u.supervisor_capacity as supervisorCapacity, u.supervisor_priority as supervisorPriority, u.supervisor_id as supervisorId,
+            (SELECT COUNT(*) FROM episode_progress ep WHERE ep.user_id = u.id AND ep.completed = 1) as completedLessons,
+            (SELECT GROUP_CONCAT(c.title, ', ') FROM enrollments e JOIN courses c ON e.course_id = c.id WHERE e.user_id = u.id) as activeCourses
+            FROM users u
+        `).all();
         res.json(users);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[USERS_GET_ALL_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to fetch users' });
     }
 });
 
-// Get students list
-router.get('/students', (req, res) => {
+// ============================================================================
+// Get students list with progress (Admin/Supervisor)
+// ============================================================================
+router.get('/students', authenticateToken, requireAdminOrSupervisor, (req, res) => {
     try {
-        const users = db.prepare('SELECT id, name, email, role, points, level, joinDate, status FROM users').all();
-        const students = users.filter(u => u.role === 'student');
+        let query = `
+            SELECT u.id, u.name, u.email, u.role, u.points, u.level, u.joinDate, u.status, u.supervisor_id as supervisorId,
+            (SELECT COUNT(*) FROM episode_progress ep WHERE ep.user_id = u.id AND ep.completed = 1) as completedLessons,
+            (SELECT GROUP_CONCAT(c.title, ', ') FROM enrollments e JOIN courses c ON e.course_id = c.id WHERE e.user_id = u.id) as activeCourses
+            FROM users u
+            WHERE u.role = 'student'
+        `;
+
+        // Supervisors can only see their assigned students
+        if (req.user.role === 'supervisor') {
+            query += ` AND u.supervisor_id = ?`;
+            const students = db.prepare(query).all(req.user.id);
+            return res.json(students);
+        }
+
+        const students = db.prepare(query).all();
         res.json(students);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[USERS_GET_STUDENTS_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to fetch students' });
     }
 });
 
-// Create new user (Admin)
-router.post('/', async (req, res) => {
+// ============================================================================
+// Create new user (Admin Only)
+// ============================================================================
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { name, email, password, role = 'student' } = req.body;
+        const {
+            name,
+            email,
+            password,
+            role = 'student',
+            nameEn,
+            avatar,
+            streak = 0,
+            status = 'active',
+            points = 0,
+            level = 1
+        } = req.body;
 
         // Validation
         if (!name || !email || !password) {
-            return res.status(400).json({ error: 'Missing required fields' });
+            return res.status(400).json({ error: 'Missing required fields: name, email, password' });
+        }
+
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Invalid email format' });
         }
 
         // Check existing
@@ -39,91 +103,244 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'User already exists' });
         }
 
-        // Create user
-        const hashedPassword = await require('bcryptjs').hash(password, 10);
+        const hashedPassword = bcrypt.hashSync(password, 10);
+
+        // Find available supervisor for students
+        let supervisorId = null;
+        if (role === 'student') {
+            try {
+                const supervisors = db.prepare(`
+                    SELECT id, supervisor_capacity, supervisor_priority 
+                    FROM users 
+                    WHERE role = 'supervisor'
+                `).all();
+
+                const candidates = supervisors.map(sv => {
+                    const count = db.prepare('SELECT COUNT(*) as count FROM users WHERE supervisor_id = ?').get(sv.id).count;
+                    return { ...sv, count };
+                }).filter(sv => sv.count < (sv.supervisor_capacity || 0));
+
+                candidates.sort((a, b) => {
+                    if (a.count !== b.count) return a.count - b.count;
+                    return (a.supervisor_priority || 999) - (b.supervisor_priority || 999);
+                });
+
+                if (candidates.length > 0) {
+                    supervisorId = candidates[0].id;
+                }
+            } catch (svError) {
+                console.error('[SUPERVISOR_ASSIGNMENT_ERROR]:', svError.message);
+            }
+        }
+
         const newUser = {
-            id: Date.now().toString(),
+            id: 'user_' + Date.now(),
             name,
+            nameEn: nameEn || name,
             email,
             password: hashedPassword,
             role,
+            avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=064e3b&color=fff&size=100`,
             joinDate: new Date().toISOString().split('T')[0],
-            points: 0,
-            level: 1,
-            emailVerified: 1
+            points,
+            level,
+            streak,
+            status,
+            emailVerified: 1,
+            supervisor_id: supervisorId
         };
 
-        db.prepare('INSERT INTO users (id, name, email, password, role, joinDate, points, level, emailVerified) VALUES (@id, @name, @email, @password, @role, @joinDate, @points, @level, @emailVerified)')
-            .run(newUser);
+        db.prepare(`
+            INSERT INTO users (id, name, nameEn, email, password, role, avatar, joinDate, points, level, streak, status, emailVerified, supervisor_id) 
+            VALUES (@id, @name, @nameEn, @email, @password, @role, @avatar, @joinDate, @points, @level, @streak, @status, @emailVerified, @supervisor_id)
+        `).run(newUser);
 
         const { password: _, ...userWithoutPass } = newUser;
+        console.log(`[USER_CREATED] Admin ${req.user.id} created user ${newUser.id}`);
         res.json(userWithoutPass);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[ADMIN_CREATE_USER_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to create user' });
     }
 });
 
-// Update user profile
-router.put('/:id', (req, res) => {
+// ============================================================================
+// Update user profile (Owner or Admin)
+// SECURITY FIX: Using whitelist to prevent SQL injection
+// ============================================================================
+router.put('/:id', authenticateToken, requireOwnerOrAdmin, (req, res) => {
     const { id } = req.params;
     const updates = req.body;
+
     try {
-        const fields = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-        const values = Object.values(updates);
-        db.prepare(`UPDATE users SET ${fields} WHERE id = ?`).run(...values, id);
+        // Filter updates to only allowed fields (SECURITY: prevents SQL injection)
+        const safeUpdates = {};
+        for (const key of Object.keys(updates)) {
+            if (ALLOWED_UPDATE_FIELDS.includes(key)) {
+                safeUpdates[key] = updates[key];
+            } else {
+                console.warn(`[SECURITY] Blocked attempt to update field: ${key} by user ${req.user.id}`);
+            }
+        }
+
+        if (Object.keys(safeUpdates).length === 0) {
+            return res.status(400).json({ error: 'No valid fields to update' });
+        }
+
+        // Build parameterized query
+        const fields = Object.keys(safeUpdates).map(k => `${k} = ?`).join(', ');
+        const values = Object.values(safeUpdates);
+
+        const result = db.prepare(`UPDATE users SET ${fields} WHERE id = ?`).run(...values, id);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        console.log(`[USER_UPDATED] User ${req.user.id} updated user ${id}`);
         res.json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[USER_UPDATE_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to update user' });
     }
 });
 
-// Delete user
-router.delete('/:id', (req, res) => {
+// ============================================================================
+// Delete user (Admin Only)
+// ============================================================================
+router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
     const { id } = req.params;
+
+    // Prevent self-deletion
+    if (req.user.id === id) {
+        return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
     try {
-        db.prepare('DELETE FROM users WHERE id = ?').run(id);
+        const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        console.log(`[USER_DELETED] Admin ${req.user.id} deleted user ${id}`);
         res.json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[USER_DELETE_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to delete user' });
     }
 });
 
-// --- Favorites ---
+// ============================================================================
+// Get user details (Owner or Admin/Supervisor)
+// ============================================================================
+router.get('/:id/details', authenticateToken, (req, res) => {
+    const { id } = req.params;
 
-// Get current user's favorites
-router.get('/:id/favorites', (req, res) => {
+    // Check authorization
+    const isOwner = req.user.id === id;
+    const isAdmin = req.user.role === 'admin';
+    const isSupervisor = req.user.role === 'supervisor';
+
+    if (!isOwner && !isAdmin && !isSupervisor) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+
+    try {
+        const userData = db.prepare(`
+            SELECT id, name, email, role, avatar, status, joinDate, points, level, whatsapp, country,
+                   supervisor_capacity as supervisorCapacity, 
+                   supervisor_priority as supervisorPriority,
+                   supervisor_id as supervisorId
+            FROM users WHERE id = ?
+        `).get(id);
+
+        if (!userData) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = { ...userData };
+
+        // Supervisors can only view their assigned students
+        if (isSupervisor && !isOwner && user.supervisorId !== req.user.id) {
+            return res.status(403).json({ error: 'Access denied. Student not assigned to you.' });
+        }
+
+        // Get supervisor name if applicable
+        if (user.supervisorId) {
+            const supervisor = db.prepare('SELECT name FROM users WHERE id = ?').get(user.supervisorId);
+            if (supervisor) {
+                user.supervisorName = supervisor.name;
+            }
+        }
+
+        // Get student count for supervisors
+        if (user.role === 'supervisor') {
+            const studentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE supervisor_id = ?').get(id).count;
+            user.studentCount = studentCount;
+        }
+
+        // Get enrollments
+        const enrollments = db.prepare(`
+            SELECT c.title as courseTitle, e.progress, e.last_accessed as lastAccess 
+            FROM enrollments e 
+            JOIN courses c ON e.course_id = c.id 
+            WHERE e.user_id = ?
+        `).all(id);
+
+        // Get certificates
+        const certificates = db.prepare(`
+            SELECT cert.id, c.title as courseTitle, cert.issue_date as issueDate 
+            FROM certificates cert 
+            JOIN courses c ON cert.course_id = c.id 
+            WHERE cert.user_id = ?
+        `).all(id);
+
+        res.json({ user, enrollments, certificates });
+    } catch (e) {
+        console.error('[USER_DETAILS_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to fetch user details' });
+    }
+});
+
+// ============================================================================
+// Favorites (Owner Only)
+// ============================================================================
+router.get('/:id/favorites', authenticateToken, requireOwnerOrAdmin, (req, res) => {
     const { id } = req.params;
     try {
         const favorites = db.prepare('SELECT * FROM favorites WHERE userId = ?').all(id);
         res.json(favorites);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[FAVORITES_GET_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to fetch favorites' });
     }
 });
 
-// Toggle favorite
-router.post('/:id/favorites/toggle', (req, res) => {
+router.post('/:id/favorites/toggle', authenticateToken, requireOwnerOrAdmin, (req, res) => {
     const { id: userId } = req.params;
     const { targetId, type } = req.body;
 
+    if (!targetId || !type) {
+        return res.status(400).json({ error: 'Missing targetId or type' });
+    }
+
     try {
-        // Check if exists
         const existing = db.prepare('SELECT * FROM favorites WHERE userId = ? AND targetId = ? AND type = ?')
             .get(userId, targetId, type);
 
         if (existing) {
-            // Remove
             db.prepare('DELETE FROM favorites WHERE userId = ? AND targetId = ? AND type = ?')
                 .run(userId, targetId, type);
             res.json({ action: 'removed', success: true });
         } else {
-            // Add
             db.prepare('INSERT INTO favorites (userId, targetId, type) VALUES (?, ?, ?)')
                 .run(userId, String(targetId), type);
             res.json({ action: 'added', success: true });
         }
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('[FAVORITES_TOGGLE_ERROR]:', e.message);
+        res.status(500).json({ error: 'Failed to toggle favorite' });
     }
 });
 

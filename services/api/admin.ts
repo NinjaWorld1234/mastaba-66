@@ -5,10 +5,12 @@ import type { SystemActivityLog, Certificate } from '../../types';
 import { getAuthToken } from './auth';
 
 export interface R2Item {
-    key?: string;
-    name?: string;
-    size?: number;
-    lastModified?: string;
+    id: string;
+    name: string;
+    fullName: string;
+    size: number;
+    lastModified: string;
+    url: string;
 }
 
 export const adminApi = {
@@ -99,7 +101,7 @@ export const adminApi = {
             return await response.json();
         },
 
-        getUploadUrl: async (fileName: string, fileType: string): Promise<{ uploadUrl: string, key: string, publicUrl: string }> => {
+        getUploadUrl: async (fileName: string, fileType: string, folderPath?: string): Promise<{ uploadUrl: string, key: string, publicUrl: string }> => {
             const token = getAuthToken();
             const response = await fetch('/api/r2/upload-url', {
                 method: 'POST',
@@ -107,7 +109,7 @@ export const adminApi = {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ fileName, fileType })
+                body: JSON.stringify({ fileName, fileType, folderPath })
             });
             if (!response.ok) throw new Error('Failed to get upload URL');
             return await response.json();
@@ -151,5 +153,60 @@ export const adminApi = {
             });
             if (!response.ok) throw new Error('Failed to create folder');
         }
+    },
+
+    downloadBackup: async (): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/admin/backup/download', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to download backup');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `database-backup-${new Date().toISOString().split('T')[0]}.sqlite`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    },
+
+    uploadCloudBackup: async (): Promise<{ url: string; key: string; size: number }> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/admin/backup/cloud', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to upload cloud backup');
+        return await response.json();
+    },
+
+    restoreBackup: async (file: File): Promise<void> => {
+        // Implementation for restore would require multipart upload or similar
+        // For now, per backend, it's not fully implemented
+        throw new Error('Restore via API not yet implemented. Please replace db.sqlite manually.');
+    },
+
+    getBackupSettings: async (): Promise<any> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/admin/settings/backup', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to fetch backup settings');
+        return await response.json();
+    },
+
+    updateBackupSettings: async (settings: any): Promise<void> => {
+        const token = getAuthToken();
+        const response = await fetch('/api/admin/settings/backup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(settings)
+        });
+        if (!response.ok) throw new Error('Failed to update backup settings');
     }
 };

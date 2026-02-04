@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { Users, Search, Filter, Mail, Calendar, UserCheck, UserX, GraduationCap, X, Check, LucideIcon, Edit, Eye, MessageSquare } from 'lucide-react';
+import { Users, Search, Filter, Mail, Calendar, UserCheck, UserX, GraduationCap, X, Check, LucideIcon, Edit, Eye, MessageSquare, BookOpen, Book, Shield, ArrowRightLeft, Settings, Award, Save } from 'lucide-react';
 import { api } from '../services/api';
 import { User } from '../types';
 import { sanitizeHTML, sanitizeEmail } from '../utils/sanitize';
@@ -60,12 +60,15 @@ StatCard.displayName = 'StatCard';
  * Student row component
  */
 const StudentRow = memo<{
-    student: User;
+    student: User & { completedLessons?: number; activeCourses?: string };
+    supervisors: User[];
     onDelete: (id: string) => void;
     onEdit: (student: User) => void;
     onView: (id: string) => void;
-    onMessage: (student: User) => void;
-}>(({ student, onDelete, onEdit, onView, onMessage }) => {
+    onPromote: (student: User) => void;
+    onTransfer: (student: User) => void;
+    onDemote: (id: string) => void;
+}>(({ student, supervisors, onDelete, onEdit, onView, onPromote, onTransfer, onDemote }) => {
     const handleDelete = useCallback(() => {
         if (window.confirm('هل أنت متأكد من حذف هذا الطالب؟')) {
             onDelete(student.id);
@@ -110,12 +113,40 @@ const StudentRow = memo<{
             <td className="py-4 px-6">
                 <div className="flex items-center gap-2 text-gray-300">
                     <Calendar className="w-4 h-4" aria-hidden="true" />
-                    <span>{student.joinDate}</span>
+                    <span>{student.joinDate?.split('T')[0]}</span>
                 </div>
             </td>
             <td className="py-4 px-6 text-white">المستوى {student.level}</td>
             <td className="py-4 px-6">
-                <span className="text-emerald-400 font-bold">{student.points}</span>
+                <div className="flex flex-col gap-1 max-w-[200px]">
+                    <span className="text-white text-sm line-clamp-1" title={student.activeCourses || 'لا يوجد'}>
+                        {student.activeCourses || 'لا يوجد'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{ width: `${Math.min((student.completedLessons || 0) * 5, 100)}%` }}
+                            />
+                        </div>
+                        <span className="text-[10px] text-gray-400 shrink-0">{student.completedLessons || 0} درس</span>
+                    </div>
+                </div>
+            </td>
+            <td className="py-4 px-6">
+                {student.role === 'supervisor' ? (
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold bg-emerald-500/10 px-3 py-1 rounded-lg w-fit">
+                        <Shield className="w-4 h-4" />
+                        <span>مشرف ({student.supervisorPriority})</span>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-1">
+                        <span className="text-gray-400 text-xs">المشرف:</span>
+                        <span className="text-white text-sm">
+                            {supervisors.find(sv => sv.id === student.supervisorId)?.name || 'الإدارة'}
+                        </span>
+                    </div>
+                )}
             </td>
             <td className="py-4 px-6">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass}`}>
@@ -138,13 +169,7 @@ const StudentRow = memo<{
                     >
                         <Edit className="w-4 h-4" />
                     </button>
-                    <button
-                        onClick={() => onMessage(student)}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                        title="مراسلة"
-                    >
-                        <MessageSquare className="w-4 h-4" />
-                    </button>
+
                     <button
                         onClick={handleDelete}
                         className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-red-400 transition-colors"
@@ -152,6 +177,32 @@ const StudentRow = memo<{
                     >
                         <UserX className="w-4 h-4" />
                     </button>
+                    {student.role === 'student' ? (
+                        <button
+                            onClick={() => onPromote(student)}
+                            className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+                            title="تعيين كمشرف"
+                        >
+                            <Award className="w-4 h-4" />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => onDemote(student.id)}
+                            className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors"
+                            title="إلغاء الإشراف"
+                        >
+                            <Shield className="w-4 h-4" />
+                        </button>
+                    )}
+                    {student.role === 'student' && (
+                        <button
+                            onClick={() => onTransfer(student)}
+                            className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors"
+                            title="نقل لمشرف آخر"
+                        >
+                            <ArrowRightLeft className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
             </td>
         </tr>
@@ -269,6 +320,226 @@ const AddStudentModal = memo<{
 AddStudentModal.displayName = 'AddStudentModal';
 
 /**
+ * Promote Student to Supervisor Modal
+ */
+const PromoteSupervisorModal = memo<{
+    isOpen: boolean;
+    onClose: () => void;
+    student: User | null;
+    onSubmit: (capacity: number, priority: number) => void;
+}>(({ isOpen, onClose, student, onSubmit }) => {
+    const [capacity, setCapacity] = useState(10);
+    const [priority, setPriority] = useState(1);
+
+    useEffect(() => {
+        if (student) {
+            setCapacity(student.supervisorCapacity || 10);
+            setPriority(student.supervisorPriority || 1);
+        }
+    }, [student]);
+
+    if (!isOpen || !student) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0a1815] border border-white/10 rounded-3xl w-full max-w-md p-6 relative animate-fade-in border-t border-emerald-500/20">
+                <button onClick={onClose} className="absolute left-4 top-4 text-gray-400 hover:text-white transition-colors">
+                    <X className="w-6 h-6" />
+                </button>
+                <h3 className="text-2xl font-bold text-white mb-6 font-serif">تعيين كمشرف: {student.name}</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-gray-400 text-sm mb-2">سعة الطلاب القصوى</label>
+                        <input
+                            type="number"
+                            value={capacity}
+                            onChange={(e) => setCapacity(parseInt(e.target.value))}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-gray-400 text-sm mb-2">أولوية الانضمام (1 هو الأعلى)</label>
+                        <input
+                            type="number"
+                            value={priority}
+                            onChange={(e) => setPriority(parseInt(e.target.value))}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                    </div>
+                    <div className="pt-4 flex gap-3">
+                        <button onClick={onClose} className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-gray-300 font-bold">إلغاء</button>
+                        <button
+                            onClick={() => onSubmit(capacity, priority)}
+                            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-bold flex items-center justify-center gap-2"
+                        >
+                            <Shield className="w-5 h-5" />
+                            <span>تثبيت كمشرف</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
+PromoteSupervisorModal.displayName = 'PromoteSupervisorModal';
+
+/**
+ * Transfer Student to Supervisor Modal
+ */
+const TransferStudentModal = memo<{
+    isOpen: boolean;
+    onClose: () => void;
+    student: User | null;
+    supervisors: User[];
+    onSubmit: (supervisorId: string | null) => void;
+}>(({ isOpen, onClose, student, supervisors, onSubmit }) => {
+    const [selectedId, setSelectedId] = useState<string | null>(student?.supervisorId || null);
+
+    if (!isOpen || !student) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0a1815] border border-white/10 rounded-3xl w-full max-w-md p-6 relative animate-fade-in border-t border-emerald-500/20">
+                <button onClick={onClose} className="absolute left-4 top-4 text-gray-400 hover:text-white transition-colors">
+                    <X className="w-6 h-6" />
+                </button>
+                <h3 className="text-2xl font-bold text-white mb-6 font-serif">نقل الطالب: {student.name}</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-gray-400 text-sm mb-2">اختر المشرف الجديد</label>
+                        <select
+                            value={selectedId || ''}
+                            onChange={(e) => setSelectedId(e.target.value || null)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                        >
+                            <option value="">الإدارة مباشرة</option>
+                            {supervisors.map(sv => (
+                                <option key={sv.id} value={sv.id}>{sv.name} ({sv.email})</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="pt-4 flex gap-3">
+                        <button onClick={onClose} className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-gray-300 font-bold">إلغاء</button>
+                        <button
+                            onClick={() => onSubmit(selectedId)}
+                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-bold flex items-center justify-center gap-2"
+                        >
+                            <ArrowRightLeft className="w-5 h-5" />
+                            <span>نقل الطالب</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
+TransferStudentModal.displayName = 'TransferStudentModal';
+
+/**
+ * Supervisor Settings Card Component
+ */
+const SupervisorSettingsCard = memo<{
+    supervisor: User & { studentCount?: number };
+    onUpdate: (id: string, capacity: number, priority: number) => Promise<void>;
+}>(({ supervisor, onUpdate }) => {
+    const [capacity, setCapacity] = useState(supervisor.supervisorCapacity || 10);
+    const [priority, setPriority] = useState(supervisor.supervisorPriority || 0);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Sync state with props
+    useEffect(() => {
+        setCapacity(supervisor.supervisorCapacity || 10);
+        setPriority(supervisor.supervisorPriority || 0);
+    }, [supervisor]);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await onUpdate(supervisor.id, capacity, priority);
+            alert('تم حفظ الإعدادات بنجاح');
+        } catch (e: any) {
+            alert('فشل الحفظ: ' + e.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="glass-panel p-4 rounded-xl border border-white/5 flex items-center justify-between gap-4">
+            <div className="flex-1">
+                <p className="text-white font-medium">{supervisor.name}</p>
+                <p className="text-gray-400 text-xs">{supervisor.email}</p>
+                <p className="text-emerald-400 text-[10px] mt-1">الطلاب الحاليين: {supervisor.studentCount || 0}</p>
+            </div>
+            <div className="flex items-center gap-3">
+                <div className="w-24">
+                    <label className="text-[10px] text-gray-400 block mb-1">السعة</label>
+                    <input
+                        type="number"
+                        value={capacity}
+                        onChange={(e) => setCapacity(parseInt(e.target.value))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm"
+                    />
+                </div>
+                <div className="w-24">
+                    <label className="text-[10px] text-gray-400 block mb-1">الأولوية</label>
+                    <input
+                        type="number"
+                        value={priority}
+                        onChange={(e) => setPriority(parseInt(e.target.value))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm"
+                    />
+                </div>
+                <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="mt-4 p-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white disabled:opacity-50"
+                    title="حفظ الإعدادات"
+                >
+                    <Save className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+});
+SupervisorSettingsCard.displayName = 'SupervisorSettingsCard';
+
+/**
+ * Supervisor Settings Modal
+ */
+const SupervisorSettingsModal = memo<{
+    isOpen: boolean;
+    onClose: () => void;
+    supervisors: (User & { studentCount?: number })[];
+    onUpdate: (id: string, capacity: number, priority: number) => void;
+}>(({ isOpen, onClose, supervisors, onUpdate }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0a1815] border border-white/10 rounded-3xl w-full max-w-2xl p-6 relative animate-fade-in border-t border-emerald-500/20">
+                <button onClick={onClose} className="absolute left-4 top-4 text-gray-400 hover:text-white transition-colors">
+                    <X className="w-6 h-6" />
+                </button>
+                <h3 className="text-2xl font-bold text-white mb-6 font-serif">إدارة المشرفين والأولويات</h3>
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                    {supervisors.map((sv) => (
+                        <SupervisorSettingsCard key={sv.id} supervisor={sv} onUpdate={onUpdate} />
+                    ))}
+                    {supervisors.length === 0 && (
+                        <p className="text-center text-gray-500 py-8">لا يوجد مشرفين حالياً. قم بترقية أحد الطلاب ليصبح مشرفاً.</p>
+                    )}
+                </div>
+                <div className="pt-6">
+                    <button onClick={onClose} className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl text-gray-300 font-bold">إغلاق</button>
+                </div>
+            </div>
+        </div>
+    );
+});
+SupervisorSettingsModal.displayName = 'SupervisorSettingsModal';
+
+/**
  * Admin Students component - Student management interface
  * 
  * Features:
@@ -294,25 +565,42 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
     const [detailsModalOpen, setDetailsModalOpen] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+    const [supervisors, setSupervisors] = useState<User[]>([]);
+    const [isSupervisorModalOpen, setIsSupervisorModalOpen] = useState(false);
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [isPromoteModalOpen, setIsPromoteModalOpen] = useState(false);
+    const [supervisorSettings, setSupervisorSettings] = useState<{ userId: string, capacity: number, priority: number } | null>(null);
 
     // Debounce search for performance
     const debouncedSearch = useDebounce(searchTerm, 300);
 
-    /** Load students from API */
-    const loadStudents = useCallback(async () => {
+    /** Load students and supervisors from API */
+    /** Load students and supervisors from API */
+    const loadData = useCallback(async () => {
+        // Load Students
         try {
             const allUsers = await api.getUsers();
             if (Array.isArray(allUsers)) {
-                setStudents(allUsers.filter(u => u.role === 'student'));
+                setStudents(allUsers);
             }
         } catch (error) {
             console.error("Failed to load students", error);
         }
+
+        // Load Supervisors (Independent)
+        try {
+            const allSupervisors = await api.supervisors.list();
+            if (Array.isArray(allSupervisors)) {
+                setSupervisors(allSupervisors);
+            }
+        } catch (error) {
+            console.error("Failed to load supervisors", error);
+        }
     }, []);
 
     useEffect(() => {
-        loadStudents();
-    }, [loadStudents]);
+        loadData();
+    }, [loadData]);
 
     /** Filter students based on search term and filters */
     const filteredStudents = useMemo(() => {
@@ -332,40 +620,45 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
 
     /** Handle add student */
     const handleAddStudent = useCallback(async (formData: NewStudentForm) => {
-        // Sanitize inputs
-        const sanitizedName = sanitizeHTML(formData.name);
-        const sanitizedEmail = sanitizeEmail(formData.email);
+        try {
+            // Sanitize inputs
+            const sanitizedName = sanitizeHTML(formData.name);
+            const sanitizedEmail = sanitizeEmail(formData.email);
 
-        await api.createUser({
-            name: sanitizedName,
-            nameEn: sanitizedName,
-            email: sanitizedEmail,
-            password: formData.password, // Include password
-            role: 'student',
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(sanitizedName)}&background=064e3b&color=fff&size=100`,
-            points: 0,
-            level: 1,
-            streak: 0,
-            joinDate: new Date().toISOString().split('T')[0],
-            status: 'active'
-        });
+            await api.createUser({
+                name: sanitizedName,
+                nameEn: sanitizedName,
+                email: sanitizedEmail,
+                password: formData.password, // Include password
+                role: 'student',
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(sanitizedName)}&background=064e3b&color=fff&size=100`,
+                points: 0,
+                level: 1,
+                streak: 0,
+                joinDate: new Date().toISOString().split('T')[0],
+                status: 'active'
+            });
 
-        setIsAddModalOpen(false);
-        loadStudents();
-    }, [loadStudents]);
+            setIsAddModalOpen(false);
+            loadData();
+        } catch (error: any) {
+            console.error("Failed to add student", error);
+            alert(`حدث خطأ أثناء إضافة الطالب: ${error.message || 'خطأ غير معروف'}`);
+        }
+    }, [loadData]);
 
     /** Handle delete student */
     const handleDeleteStudent = useCallback(async (id: string) => {
         await api.deleteUser(id);
-        loadStudents();
-    }, [loadStudents]);
+        loadData();
+    }, [loadData]);
 
     /** Handle update student */
     const handleUpdateStudent = useCallback(async (id: string, updates: Partial<User>) => {
         await api.updateUser(id, updates);
         setEditModalOpen(false);
-        loadStudents();
-    }, [loadStudents]);
+        loadData();
+    }, [loadData]);
 
     /** Open Edit Modal */
     const openEditModal = useCallback((student: User) => {
@@ -379,27 +672,53 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
         setDetailsModalOpen(true);
     }, []);
 
-    /** Handle Message */
-    const handleMessage = useCallback((student: User) => {
-        if (onOpenChat) {
-            onOpenChat(student.id);
-        } else if (setActiveTab) {
-            // Fallback if only setActiveTab is provided (legacy)
-            setActiveTab('messages');
-        } else {
-            console.warn('onOpenChat not provided to AdminStudents');
+    const handlePromote = useCallback(async (capacity: number, priority: number) => {
+        if (selectedStudent) {
+            try {
+                await api.supervisors.promote(selectedStudent.id, capacity, priority);
+                setIsPromoteModalOpen(false);
+                loadData();
+            } catch (error: any) {
+                console.error("Failed to promote supervisor", error);
+                alert(`فشل ترقية المشرف: ${error.message}`);
+            }
         }
-    }, [onOpenChat, setActiveTab]);
+    }, [selectedStudent, loadData]);
 
-    const handleMessageFromDetails = useCallback((studentId: string) => {
-        if (onOpenChat) {
-            onOpenChat(studentId);
-            setDetailsModalOpen(false);
-        } else if (setActiveTab) {
-            setActiveTab('messages');
-            setDetailsModalOpen(false);
+    const handleTransfer = useCallback(async (supervisorId: string | null) => {
+        if (selectedStudent) {
+            try {
+                await api.supervisors.assignStudent(selectedStudent.id, supervisorId);
+                setIsTransferModalOpen(false);
+                loadData();
+            } catch (error: any) {
+                console.error("Failed to transfer student", error);
+                alert(`فشل نقل الطالب: ${error.message}`);
+            }
         }
-    }, [onOpenChat, setActiveTab]);
+    }, [selectedStudent, loadData]);
+
+    const handleDemote = useCallback(async (supervisorId: string) => {
+        if (window.confirm('هل أنت متأكد من إلغاء تعيين هذا المشرف؟ سيتم تحويل طلابه للإدارة.')) {
+            try {
+                await api.supervisors.demote(supervisorId, null);
+                loadData();
+            } catch (error: any) {
+                console.error("Failed to demote supervisor", error);
+                alert(`فشل إلغاء المشرف: ${error.message}`);
+            }
+        }
+    }, [loadData]);
+
+    const handleUpdateSvSettings = useCallback(async (id: string, cap: number, prio: number) => {
+        try {
+            await api.supervisors.updateSettings(id, cap, prio);
+            loadData();
+        } catch (error: any) {
+            console.error("Failed to update settings", error);
+            alert(`فشل تحديث الإعدادات: ${error.message}`);
+        }
+    }, [loadData]);
 
 
     /** Handle email student */
@@ -423,12 +742,18 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
     }, []);
 
     /** Statistics */
-    const stats: StatItem[] = useMemo(() => [
-        { label: 'إجمالي الطلاب', value: students.length, icon: Users, color: 'from-emerald-500 to-teal-600' },
-        { label: 'الطلاب النشطين', value: students.filter(s => s.status === 'active').length, icon: UserCheck, color: 'from-blue-500 to-cyan-600' },
-        { label: 'غير نشطين', value: students.filter(s => s.status === 'inactive').length, icon: UserX, color: 'from-amber-500 to-orange-600' },
-        { label: 'معدل الإنجاز', value: '0%', icon: GraduationCap, color: 'from-purple-500 to-pink-600' },
-    ], [students]);
+    const stats: StatItem[] = useMemo(() => {
+        const totalStudents = students.length;
+        const totalLessons = students.reduce((acc, s: any) => acc + (s.completedLessons || 0), 0);
+        const avgProgress = totalStudents > 0 ? Math.round((totalLessons / (totalStudents * 20)) * 100) : 0; // Assuming 20 lessons average
+
+        return [
+            { label: 'إجمالي الطلاب', value: totalStudents, icon: Users, color: 'from-emerald-500 to-teal-600' },
+            { label: 'الطلاب النشطين', value: students.filter(s => s.status === 'active').length, icon: UserCheck, color: 'from-blue-500 to-cyan-600' },
+            { label: 'دروس مكتملة', value: totalLessons, icon: BookOpen, color: 'from-amber-500 to-orange-600' },
+            { label: 'معدل الإنجاز', value: `${avgProgress}%`, icon: GraduationCap, color: 'from-purple-500 to-pink-600' },
+        ];
+    }, [students]);
 
     return (
         <div className="animate-fade-in space-y-6 relative" role="main" aria-label="إدارة الطلاب">
@@ -438,14 +763,22 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
                     <h2 className="text-3xl font-bold text-white mb-2">إدارة الطلاب</h2>
                     <p className="text-gray-300">عرض وإدارة جميع الطلاب المسجلين</p>
                 </div>
-                <button
-                    onClick={handleOpenAddModal}
-                    className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity shadow-lg flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                    aria-label="إضافة طالب جديد"
-                >
-                    <Users className="w-5 h-5" aria-hidden="true" />
-                    <span>+ إضافة طالب</span>
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsSupervisorModalOpen(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-white font-bold transition-all"
+                    >
+                        <Shield className="w-5 h-5 text-emerald-400" />
+                        <span>إدارة المشرفين</span>
+                    </button>
+                    <button
+                        onClick={handleOpenAddModal}
+                        className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-2xl text-white font-bold shadow-lg shadow-emerald-600/20 transition-all transform hover:scale-105"
+                    >
+                        <Users className="w-5 h-5" />
+                        <span>إضافة طالب</span>
+                    </button>
+                </div>
             </header>
 
             {/* Stats */}
@@ -487,12 +820,13 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
                 <table className="w-full" role="grid">
                     <thead>
                         <tr className="border-b border-white/10 bg-white/5">
-                            <th scope="col" className="text-right py-4 px-6 text-gray-300 font-medium">الطالب</th>
-                            <th scope="col" className="text-right py-4 px-6 text-gray-300 font-medium">تاريخ الانضمام</th>
-                            <th scope="col" className="text-right py-4 px-6 text-gray-300 font-medium">المستوى</th>
-                            <th scope="col" className="text-right py-4 px-6 text-gray-300 font-medium">النقاط</th>
-                            <th scope="col" className="text-right py-4 px-6 text-gray-300 font-medium">الحالة</th>
-                            <th scope="col" className="text-right py-4 px-6 text-gray-300 font-medium">إجراءات</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium">الطالب</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium font-serif">تاريخ الانضمام</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium">المستوى</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium">الدورات والتقدم</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium">المشرف</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium">الحالة</th>
+                            <th className="py-4 px-6 text-right text-gray-400 font-medium">الإجراءات</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -503,16 +837,19 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
                                     <StudentRow
                                         key={student.id}
                                         student={student}
+                                        supervisors={supervisors}
                                         onDelete={handleDeleteStudent}
                                         onEdit={openEditModal}
                                         onView={openDetailsModal}
-                                        onMessage={handleMessage}
+                                        onPromote={(s) => { setSelectedStudent(s); setIsPromoteModalOpen(true); }}
+                                        onTransfer={(s) => { setSelectedStudent(s); setIsTransferModalOpen(true); }}
+                                        onDemote={handleDemote}
                                     />
                                 );
                             })
                         ) : (
                             <tr>
-                                <td colSpan={6} className="py-8 text-center text-gray-400">
+                                <td colSpan={7} className="py-8 text-center text-gray-400">
                                     لا يوجد طلاب مطابقين للبحث
                                 </td>
                             </tr>
@@ -545,27 +882,50 @@ const AdminStudents: React.FC<AdminStudentsProps> = memo(({ setActiveTab, onOpen
                 </div>
             </nav>
 
-            {/* Add Student Modal */}
-            <AddStudentModal
-                isOpen={isAddModalOpen}
-                onClose={handleCloseAddModal}
-                onSubmit={handleAddStudent}
+            {isAddModalOpen && (
+                <AddStudentModal
+                    isOpen={isAddModalOpen}
+                    onClose={handleCloseAddModal}
+                    onSubmit={handleAddStudent}
+                />
+            )}
+
+            <PromoteSupervisorModal
+                isOpen={isPromoteModalOpen}
+                onClose={() => setIsPromoteModalOpen(false)}
+                student={selectedStudent}
+                onSubmit={handlePromote}
             />
 
-            {/* Edit Student Modal */}
-            <EditStudentModal
-                isOpen={editModalOpen}
-                onClose={() => setEditModalOpen(false)}
-                onSubmit={handleUpdateStudent}
+            <TransferStudentModal
+                isOpen={isTransferModalOpen}
+                onClose={() => setIsTransferModalOpen(false)}
                 student={selectedStudent}
+                supervisors={supervisors}
+                onSubmit={handleTransfer}
             />
+
+            <SupervisorSettingsModal
+                isOpen={isSupervisorModalOpen}
+                onClose={() => setIsSupervisorModalOpen(false)}
+                supervisors={supervisors as any}
+                onUpdate={handleUpdateSvSettings}
+            />
+
+            {editModalOpen && selectedStudent && (
+                <EditStudentModal
+                    isOpen={editModalOpen}
+                    onClose={() => setEditModalOpen(false)}
+                    onSubmit={handleUpdateStudent}
+                    student={selectedStudent}
+                />
+            )}
 
             {/* Student Details Modal */}
             <StudentDetailsModal
                 isOpen={detailsModalOpen}
                 onClose={() => setDetailsModalOpen(false)}
                 studentId={selectedStudentId}
-                onMessage={handleMessageFromDetails}
             />
         </div>
     );

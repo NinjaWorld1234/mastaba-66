@@ -24,7 +24,7 @@ import InstallPrompt from './components/InstallPrompt';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import CoursesGrid from './components/CoursesGrid';
-import { ProtectedRoute, AdminRoute, PublicRoute } from './components/RouteGuards';
+import { ProtectedRoute, AdminRoute, PublicRoute, SupervisorRoute } from './components/RouteGuards';
 import { Course } from './types';
 
 // ============================================================================
@@ -57,7 +57,7 @@ const ROUTE_IMPORTS = {
   'admin-students': () => import('./components/AdminStudents'),
   'admin-audio-courses': () => import('./components/AdminAudioCourses'),
   'admin-reports': () => import('./components/AdminReports'),
-  'admin-content': () => import('./components/AdminContentManagement'),
+  'admin-library': () => import('./components/AdminLibrary'),
   'admin-announcements': () => import('./components/AdminAnnouncements'),
   'admin-quizzes': () => import('./components/AdminQuizManagement'),
   'admin-activity-log': () => import('./components/AdminActivityLog'),
@@ -92,12 +92,16 @@ const AdminDashboard = lazy(ROUTE_IMPORTS['admin-dashboard']);
 const AdminStudents = lazy(ROUTE_IMPORTS['admin-students']);
 const AdminAudioCourses = lazy(ROUTE_IMPORTS['admin-audio-courses']);
 const AdminReports = lazy(ROUTE_IMPORTS['admin-reports']);
-const AdminContentManagement = lazy(ROUTE_IMPORTS['admin-content']);
+const AdminLibrary = lazy(ROUTE_IMPORTS['admin-library']);
 const AdminAnnouncements = lazy(ROUTE_IMPORTS['admin-announcements']);
 const AdminQuizManagement = lazy(ROUTE_IMPORTS['admin-quizzes']);
 const AdminActivityLog = lazy(ROUTE_IMPORTS['admin-activity-log']);
 const AdminCertificateManagement = lazy(ROUTE_IMPORTS['admin-certificates']);
 const AdminBackupSettings = lazy(ROUTE_IMPORTS['admin-backup']);
+
+// Supervisor Components
+const SupervisorDashboard = lazy(() => import('./components/SupervisorDashboard'));
+const SupervisorStudents = lazy(() => import('./components/SupervisorStudents'));
 
 // Auth Components
 const LandingPage = lazy(ROUTE_IMPORTS.landing);
@@ -147,9 +151,11 @@ const AppContent: React.FC = () => {
   // Sync view state with authentication state
   useEffect(() => {
     if (isAuthenticated && (location.pathname === '/' || location.pathname === '/login' || location.pathname === '/signup')) {
-      navigate('/dashboard', { replace: true });
+      if (user?.role === 'admin') navigate('/admin', { replace: true });
+      else if (user?.role === 'supervisor') navigate('/supervisor', { replace: true });
+      else navigate('/dashboard', { replace: true });
     }
-  }, [isAuthenticated, location.pathname, navigate]);
+  }, [isAuthenticated, user?.role, location.pathname, navigate]);
 
   // Check for pending verification on mount
   useEffect(() => {
@@ -207,50 +213,6 @@ const AppContent: React.FC = () => {
     setActiveCourse(null);
   };
 
-  /**
-   * Main content renderer - handles player and role-based routing
-   */
-  const AppRoutes: React.FC = () => {
-    return (
-      <Routes>
-        {/* Student Routes */}
-        <Route path="/dashboard" element={<Dashboard onPlayCourse={handlePlayCourse} setActiveTab={setActiveTab} unreadCount={unreadCount} />} />
-        <Route path="/community" element={<Community />} />
-        <Route path="/library" element={<Library />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/courses" element={<CoursesGrid onPlayCourse={handlePlayCourse} />} />
-        <Route path="/certificates" element={<StudentCertificates />} />
-        <Route path="/quiz" element={<Quiz />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/daily-tracking" element={<DailyTracking />} />
-        <Route path="/notifications" element={<Notifications />} />
-        <Route path="/favorites" element={<Favorites />} />
-        <Route path="/progress" element={<PersonalProgress />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="/messages" element={<MessagingSystem />} />
-
-        {/* Player (Dynamic ID) */}
-        <Route path="/player/:courseId" element={
-          activeCourse ? <Player course={activeCourse} onBack={handleBackToDashboard} /> : <Navigate to="/dashboard" />
-        } />
-
-        {/* Admin Routes */}
-        <Route path="/admin" element={<AdminRoute><AdminDashboard setActiveTab={setActiveTab} unreadCount={unreadCount} /></AdminRoute>} />
-        <Route path="/admin/students" element={<AdminRoute><AdminStudents onOpenChat={handleOpenChat} /></AdminRoute>} />
-        <Route path="/admin/audio-courses" element={<AdminRoute><AdminAudioCourses onPreview={handlePlayCourse} /></AdminRoute>} />
-        <Route path="/admin/reports" element={<AdminRoute><AdminReports /></AdminRoute>} />
-        <Route path="/admin/content" element={<AdminRoute><AdminContentManagement /></AdminRoute>} />
-        <Route path="/admin/announcements" element={<AdminRoute><AdminAnnouncements /></AdminRoute>} />
-        <Route path="/admin/quizzes" element={<AdminRoute><AdminQuizManagement /></AdminRoute>} />
-        <Route path="/admin/activity-log" element={<AdminRoute><AdminActivityLog /></AdminRoute>} />
-        <Route path="/admin/certificates" element={<AdminRoute><AdminCertificateManagement /></AdminRoute>} />
-        <Route path="/admin/backup" element={<AdminRoute><AdminBackupSettings /></AdminRoute>} />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    );
-  };
 
   // ========================================================================
   // Loading State
@@ -263,84 +225,102 @@ const AppContent: React.FC = () => {
   // Root Router Return
   // ========================================================================
   return (
-    <Routes>
-      <Route path="/" element={
-        <PublicRoute>
-          <LandingPage
-            onLoginClick={() => navigate('/login')}
-            onSignupClick={() => navigate('/signup')}
-            onQuickLogin={async (role) => {
-              const email = role === 'admin' ? 'admin@example.com' : 'ahmed@example.com';
-              const password = role === 'admin' ? 'admin123' : '123456';
-              try {
-                const success = await login(email, password);
-                if (success) navigate('/dashboard');
-                else toast.error('فشل تسجيل الدخول السريع.');
-              } catch (e) {
-                toast.error('فشل تسجيل الدخول السريع.');
-              }
+    <>
+      <Routes>
+        <Route path="/" element={
+          <PublicRoute>
+            <LandingPage
+              onLoginClick={() => navigate('/login')}
+              onSignupClick={() => navigate('/signup')}
+              onQuickLogin={async (role) => {
+                let email = '';
+                let password = '';
+
+                if (role === 'admin') {
+                  email = 'admin@example.com';
+                  password = 'admin123';
+                } else if (role === 'supervisor') {
+                  email = 'a@a.com';
+                  password = '111';
+                } else {
+                  email = 'ahmed@example.com';
+                  password = '123456';
+                }
+
+                try {
+                  const success = await login(email, password);
+                  if (success) {
+                    if (role === 'admin') navigate('/admin');
+                    else if (role === 'supervisor') navigate('/supervisor');
+                    else navigate('/dashboard');
+                  }
+                  else toast.error('فشل تسجيل الدخول السريع.');
+                } catch (e) {
+                  toast.error('فشل تسجيل الدخول السريع.');
+                }
+              }}
+            />
+          </PublicRoute>
+        } />
+
+        <Route path="/login" element={
+          <PublicRoute>
+            <Auth
+              initialView="login"
+              onToggleView={(view) => navigate(view === 'login' ? '/login' : '/signup')}
+              onBack={() => navigate('/')}
+              onLoginSuccess={() => navigate('/dashboard')}
+              onVerificationRequired={(email) => {
+                setPendingEmail(email);
+                navigate('/verify');
+              }}
+            />
+          </PublicRoute>
+        } />
+
+        <Route path="/signup" element={
+          <PublicRoute>
+            <RegistrationForm
+              onBack={() => navigate('/')}
+              onSuccess={(email) => {
+                setPendingEmail(email);
+                navigate('/verify');
+              }}
+            />
+          </PublicRoute>
+        } />
+
+        <Route path="/verify" element={
+          <EmailVerification
+            email={pendingEmail}
+            onSuccess={() => {
+              localStorage.removeItem('pendingVerificationEmail');
+              checkSession().then(() => navigate('/dashboard'));
+            }}
+            onBack={() => {
+              localStorage.removeItem('pendingVerificationEmail');
+              localStorage.removeItem('authToken');
+              setPendingEmail('');
+              navigate('/signup');
             }}
           />
-          <InstallPrompt />
-        </PublicRoute>
-      } />
+        } />
 
-      <Route path="/login" element={
-        <PublicRoute>
-          <Auth
-            initialView="login"
-            onToggleView={(view) => navigate(view === 'login' ? '/login' : '/signup')}
-            onBack={() => navigate('/')}
-            onLoginSuccess={() => navigate('/dashboard')}
-            onVerificationRequired={(email) => {
-              setPendingEmail(email);
-              navigate('/verify');
-            }}
-          />
-        </PublicRoute>
-      } />
-
-      <Route path="/signup" element={
-        <PublicRoute>
-          <RegistrationForm
-            onBack={() => navigate('/')}
-            onSuccess={(email) => {
-              setPendingEmail(email);
-              navigate('/verify');
-            }}
-          />
-        </PublicRoute>
-      } />
-
-      <Route path="/verify" element={
-        <EmailVerification
-          email={pendingEmail}
-          onSuccess={() => {
-            localStorage.removeItem('pendingVerificationEmail');
-            checkSession().then(() => navigate('/dashboard'));
-          }}
-          onBack={() => {
-            localStorage.removeItem('pendingVerificationEmail');
-            localStorage.removeItem('authToken');
-            setPendingEmail('');
-            navigate('/signup');
-          }}
-        />
-      } />
-
-      {/* Main App Layout */}
-      <Route path="/*" element={
-        <ProtectedRoute>
-          <AppLayout
-            activeCourse={activeCourse}
-            handlePlayCourse={handlePlayCourse}
-            handleBackToDashboard={handleBackToDashboard}
-            handleOpenChat={handleOpenChat}
-            selectedConversationId={selectedConversationId}
-          />
-        </ProtectedRoute>
-      } />
-    </Routes>
+        {/* Main App Layout */}
+        <Route path="/*" element={
+          <ProtectedRoute>
+            <AppLayout
+              activeCourse={activeCourse}
+              handlePlayCourse={handlePlayCourse}
+              handleBackToDashboard={handleBackToDashboard}
+              handleOpenChat={handleOpenChat}
+              selectedConversationId={selectedConversationId}
+            />
+          </ProtectedRoute>
+        } />
+      </Routes>
+      <InstallPrompt />
+    </>
   );
 };
 
@@ -368,7 +348,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   // Correctly derive active tab and role prefix
   const pathSegments = pathname.split('/').filter(Boolean);
   const isAdminPath = pathSegments[0] === 'admin';
-  const activeTab = isAdminPath
+  const isSupervisorPath = pathSegments[0] === 'supervisor';
+  const activeTab = (isAdminPath || isSupervisorPath)
     ? (pathSegments[1] || 'dashboard')
     : (pathSegments[0] || 'dashboard');
 
@@ -387,6 +368,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({
         navigate('/admin');
       } else {
         navigate(`/admin/${tab}`);
+      }
+    } else if (user?.role === 'supervisor') {
+      if (tab === 'dashboard') {
+        navigate('/supervisor');
+      } else {
+        navigate(`/supervisor/${tab}`);
       }
     } else {
       navigate(`/${tab}`);
@@ -455,7 +442,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
 
         <div
           id="main-content"
-          className="flex-1 overflow-y-auto overflow-x-hidden p-8 pt-0 custom-scrollbar relative z-10"
+          className="flex-1 overflow-y-auto overflow-x-hidden p-8 pt-0 pb-24 xl:pb-0 custom-scrollbar relative z-10"
           role="main"
           aria-label="المحتوى الرئيسي"
         >
@@ -463,8 +450,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({
             <Suspense fallback={<SkeletonDashboard />}>
               <Routes>
                 {/* Student Routes */}
-                <Route path="/dashboard" element={<Dashboard onPlayCourse={handlePlayCourse} setActiveTab={setActiveTab} unreadCount={unreadCount} />} />
-                <Route path="/community" element={<Community />} />
+                <Route path="/dashboard" element={
+                  user?.role === 'admin' ? <Navigate to="/admin" replace /> :
+                    user?.role === 'supervisor' ? <Navigate to="/supervisor" replace /> :
+                      <Dashboard onPlayCourse={handlePlayCourse} setActiveTab={setActiveTab} unreadCount={unreadCount} />
+                } />
                 <Route path="/library" element={<Library />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/courses" element={<CoursesGrid onPlayCourse={handlePlayCourse} />} />
@@ -478,9 +468,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 <Route path="/search" element={<Search />} />
                 <Route path="/messages" element={<MessagingSystem initialSelectedUserId={selectedConversationId} />} />
 
-                {/* Player (Dynamic ID) */}
                 <Route path="/player/:courseId" element={
-                  activeCourse ? <Player course={activeCourse} onBack={handleBackToDashboard} /> : <Navigate to="/dashboard" />
+                  activeCourse ? <Player course={activeCourse} onBack={handleBackToDashboard} onPlayCourse={handlePlayCourse} /> : <Navigate to="/dashboard" />
                 } />
 
                 {/* Admin Routes */}
@@ -488,13 +477,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 <Route path="/admin/students" element={<AdminRoute><AdminStudents onOpenChat={handleOpenChat} /></AdminRoute>} />
                 <Route path="/admin/audio-courses" element={<AdminRoute><AdminAudioCourses onPreview={handlePlayCourse} /></AdminRoute>} />
                 <Route path="/admin/reports" element={<AdminRoute><AdminReports /></AdminRoute>} />
-                <Route path="/admin/content" element={<AdminRoute><AdminContentManagement /></AdminRoute>} />
+                <Route path="/admin/library" element={<AdminRoute><AdminLibrary /></AdminRoute>} />
                 <Route path="/admin/announcements" element={<AdminRoute><AdminAnnouncements /></AdminRoute>} />
                 <Route path="/admin/quizzes" element={<AdminRoute><AdminQuizManagement /></AdminRoute>} />
                 <Route path="/admin/activity-log" element={<AdminRoute><AdminActivityLog /></AdminRoute>} />
                 <Route path="/admin/certificates" element={<AdminRoute><AdminCertificateManagement /></AdminRoute>} />
-                <Route path="/admin/backup" element={<AdminRoute><AdminBackupSettings /></AdminRoute>} />
                 <Route path="/admin/messages" element={<AdminRoute><MessagingSystem /></AdminRoute>} />
+
+                {/* Supervisor Routes */}
+                <Route path="/supervisor" element={<SupervisorRoute><SupervisorDashboard onOpenChat={handleOpenChat} /></SupervisorRoute>} />
+                <Route path="/supervisor/students" element={<SupervisorRoute><SupervisorStudents onOpenChat={handleOpenChat} /></SupervisorRoute>} />
+                <Route path="/supervisor/audio-courses" element={<SupervisorRoute><AdminAudioCourses onPreview={handlePlayCourse} /></SupervisorRoute>} />
 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />

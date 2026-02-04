@@ -32,12 +32,53 @@ router.get('/', (req, res) => {
             }
         }
 
-        const courses = db.prepare('SELECT * FROM courses ORDER BY created_at DESC').all();
-        const coursesWithExtra = courses.map(c => {
+        const courses = db.prepare('SELECT * FROM courses ORDER BY order_index ASC, created_at DESC').all();
+
+        // Fetch all passed quizzes for this user to determine locking
+        let passedCourseIds = new Set();
+        if (userId) {
+            const passedResults = db.prepare(`
+                SELECT DISTINCT q.courseId 
+                FROM quiz_results qr
+                JOIN quizzes q ON qr.quizId = q.id
+                WHERE qr.userId = ? AND qr.percentage >= q.passing_score
+            `).all(userId);
+            passedResults.forEach(r => passedCourseIds.add(String(r.courseId)));
+        }
+
+        const coursesWithExtra = courses.map((c, index) => {
             const episodes = db.prepare('SELECT * FROM episodes WHERE courseId = ? ORDER BY orderIndex ASC').all(c.id);
 
             // Get progress if userId is known
             let progress = 0;
+            let isLocked = false;
+
+            // Per-folder locking logic: isolated to within the same folder
+            const currentFolderId = String(c.folder_id || '').toLowerCase().trim();
+            const folderCourses = courses.filter(course =>
+                String(course.folder_id || '').toLowerCase().trim() === currentFolderId
+            );
+
+            // Robust index check: find position within current folder program
+            const indexInFolder = folderCourses.findIndex(course => String(course.id) === String(c.id));
+
+            if (req.user?.role === 'admin') {
+                isLocked = false;
+            } else if (indexInFolder === 0 || indexInFolder === -1) {
+                isLocked = false; // First course in each folder is always unlocked
+            } else {
+                // Subsequent courses are locked if the previous one isn't "passed"
+                const prevCourse = folderCourses[indexInFolder - 1];
+                const passed = userId ? passedCourseIds.has(String(prevCourse.id)) : false;
+                isLocked = !passed;
+            }
+
+            // Emergency override: if it's the ONLY course in its folder, it's never locked
+            if (folderCourses.length <= 1) {
+                isLocked = false;
+            }
+
+            // Progress check
             if (userId) {
                 const enrollment = db.prepare('SELECT progress FROM enrollments WHERE user_id = ? AND course_id = ?').get(userId, c.id);
                 if (enrollment) progress = enrollment.progress;
@@ -62,36 +103,164 @@ router.get('/', (req, res) => {
                 status: c.status,
                 passingScore: c.passing_score,
                 quizFrequency: c.quiz_frequency,
-                progress: progress, // Now always provided as number
-                episodes: episodes.map(ep => ({
-                    id: String(ep.id),
-                    courseId: String(ep.courseId),
-                    title: ep.title,
-                    titleEn: ep.title_en,
-                    videoUrl: ep.videoUrl,
-                    orderIndex: ep.orderIndex,
-                    duration: ep.duration,
-                    isLocked: !!ep.isLocked
-                }))
+                folderId: c.folder_id,
+                orderIndex: c.order_index,
+                progress: progress,
+                isLocked: isLocked,
+                isEnrolled: userId ? !!db.prepare('SELECT 1 FROM enrollments WHERE user_id = ? AND course_id = ?').get(userId, c.id) : false,
+                episodes: episodes.map(ep => {
+                    let epProgress = { completed: false, lastPosition: 0, watchedDuration: 0 };
+                    if (userId) {
+                        const prog = db.prepare('SELECT completed, last_position, watched_duration FROM episode_progress WHERE user_id = ? AND episode_id = ?').get(userId, ep.id);
+                        if (prog) {
+                            epProgress = {
+                                completed: !!prog.completed,
+                                lastPosition: prog.last_position || 0,
+                                watchedDuration: prog.watched_duration || 0
+                            };
+                        }
+                    }
+                    return {
+                        id: String(ep.id),
+                        courseId: String(ep.courseId),
+                        title: ep.title,
+                        titleEn: ep.title_en,
+                        videoUrl: ep.videoUrl,
+                        orderIndex: ep.orderIndex,
+                        duration: ep.duration,
+                        isLocked: !!ep.isLocked,
+                        ...epProgress
+                    };
+                })
             };
         });
         res.json(coursesWithExtra);
     } catch (e) {
+        console.error('Error fetching courses:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Enroll in a course
+router.post('/enroll', authenticateToken, (req, res) => {
+    console.log(`[DEBUG COURSES] POST /enroll reached for user ${req.user.id}`);
+    const { courseId } = req.body;
+    const userId = req.user.id;
+
+    if (!courseId) {
+        return res.status(400).json({ error: 'Missing courseId' });
+    }
+
+    try {
+        if (req.user.role !== 'admin') {
+            const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+            if (!course) return res.status(404).json({ error: 'Course not found' });
+
+            const currentFolderId = String(course.folder_id || '').toLowerCase().trim();
+            const folderCourses = db.prepare('SELECT * FROM courses WHERE LOWER(TRIM(folder_id)) = ? ORDER BY order_index ASC').all(currentFolderId);
+            const courseIndex = folderCourses.findIndex(c => String(c.id) === String(courseId));
+
+            if (folderCourses.length > 1 && courseIndex > 0) {
+                const prevCourse = folderCourses[courseIndex - 1];
+                const passed = db.prepare(`
+                    SELECT 1 FROM quiz_results qr
+                    JOIN quizzes q ON qr.quizId = q.id
+                    WHERE qr.userId = ? AND q.courseId = ? AND qr.percentage >= q.passing_score
+                `).get(userId, prevCourse.id);
+
+                if (!passed) {
+                    return res.status(403).json({ error: 'هذا المساق مغلق حتى تجتاز المساق السابق في هذا القسم' });
+                }
+            }
+        }
+
+        // Check if already enrolled
+        const existing = db.prepare('SELECT * FROM enrollments WHERE user_id = ? AND course_id = ?').get(userId, courseId);
+        if (existing) {
+            return res.status(400).json({ error: 'Already enrolled in this course' });
+        }
+
+        // Insert enrollment
+        db.prepare(`
+            INSERT INTO enrollments (user_id, course_id, enrolled_at, progress, completed)
+            VALUES (?, ?, CURRENT_TIMESTAMP, 0, 0)
+        `).run(userId, courseId);
+
+        // Update students_count in courses table
+        db.prepare('UPDATE courses SET students_count = students_count + 1 WHERE id = ?').run(courseId);
+
+        res.json({ success: true, message: 'Enrolled successfully' });
+    } catch (e) {
+        console.error('Enrollment error:', e);
         res.status(500).json({ error: e.message });
     }
 });
 
 // Update progress
 router.post('/episode-progress', authenticateToken, (req, res) => {
-    const { courseId, episodeId, completed } = req.body;
+    const { courseId, episodeId, completed, lastPosition, watchedDuration } = req.body;
+
+    // SECURITY: Ensure course isn't locked
+    if (req.user.role !== 'admin') {
+        const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+        if (course) {
+            const currentFolderId = String(course.folder_id || '').toLowerCase().trim();
+            const folderCourses = db.prepare('SELECT * FROM courses WHERE LOWER(TRIM(folder_id)) = ? ORDER BY order_index ASC').all(currentFolderId);
+            const courseIndex = folderCourses.findIndex(c => String(c.id) === String(courseId));
+
+            if (folderCourses.length > 1 && courseIndex > 0) {
+                const prevCourse = folderCourses[courseIndex - 1];
+                const passed = db.prepare(`
+                    SELECT 1 FROM quiz_results qr
+                    JOIN quizzes q ON qr.quizId = q.id
+                    WHERE qr.userId = ? AND q.courseId = ? AND qr.percentage >= q.passing_score
+                `).get(req.user.id, prevCourse.id);
+
+                if (!passed) {
+                    return res.status(403).json({ error: 'Course is locked' });
+                }
+            }
+        }
+    }
+
     try {
         db.prepare(`
-            INSERT INTO episode_progress (user_id, course_id, episode_id, completed)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, episode_id) DO UPDATE SET completed = excluded.completed
-        `).run(req.user.id, courseId, episodeId, completed ? 1 : 0);
+            INSERT INTO episode_progress (user_id, course_id, episode_id, completed, last_position, watched_duration, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, episode_id) DO UPDATE SET 
+                completed = COALESCE(excluded.completed, completed),
+                last_position = COALESCE(excluded.last_position, last_position),
+                watched_duration = MAX(COALESCE(excluded.watched_duration, 0), watched_duration),
+                updated_at = CURRENT_TIMESTAMP
+        `).run(
+            req.user.id,
+            courseId,
+            episodeId,
+            completed !== undefined ? (completed ? 1 : 0) : null,
+            lastPosition !== undefined ? lastPosition : null,
+            watchedDuration !== undefined ? watchedDuration : null
+        );
+
+        // Recalculate overall course progress
+        if (courseId && courseId !== 'default' && episodeId !== 'FULL_COURSE') {
+            const episodes = db.prepare('SELECT id FROM episodes WHERE courseId = ?').all(courseId);
+            if (episodes.length > 0) {
+                const epIds = episodes.map(e => e.id);
+                // Simple placeholder logic for SQLite
+                const completedCount = db.prepare(`
+                    SELECT COUNT(*) as count 
+                    FROM episode_progress 
+                    WHERE user_id = ? AND course_id = ? AND completed = 1
+                `).get(req.user.id, courseId).count;
+
+                const progress = Math.round((completedCount / episodes.length) * 100);
+                db.prepare('UPDATE enrollments SET progress = ?, last_accessed = CURRENT_TIMESTAMP WHERE user_id = ? AND course_id = ?').run(progress, req.user.id, courseId);
+            }
+        }
+
         res.json({ success: true });
     } catch (e) {
+        console.error('Error updating episode progress:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -101,9 +270,9 @@ router.post('/', authenticateToken, (req, res) => {
     const course = req.body;
     try {
         const stmt = db.prepare(`
-            INSERT INTO courses (id, title, title_en, instructor, instructor_en, category, category_en, duration, duration_en, thumbnail, description, description_en, lessons_count, students_count, video_url, status, passing_score, quiz_frequency)
-            VALUES (@id, @title, @title_en, @instructor, @instructor_en, @category, @category_en, @duration, @duration_en, @thumbnail, @description, @description_en, @lessons_count, @students_count, @video_url, @status, @passing_score, @quiz_frequency)
-        `);
+            INSERT INTO courses(id, title, title_en, instructor, instructor_en, category, category_en, duration, duration_en, thumbnail, description, description_en, lessons_count, students_count, video_url, status, passing_score, quiz_frequency, folder_id)
+            VALUES(@id, @title, @title_en, @instructor, @instructor_en, @category, @category_en, @duration, @duration_en, @thumbnail, @description, @description_en, @lessons_count, @students_count, @video_url, @status, @passing_score, @quiz_frequency, @folder_id)
+                `);
 
         stmt.run({
             id: String(course.id),
@@ -123,15 +292,16 @@ router.post('/', authenticateToken, (req, res) => {
             video_url: course.videoUrl || '',
             status: course.status || 'published',
             passing_score: course.passingScore || 80,
-            quiz_frequency: course.quizFrequency || 0
+            quiz_frequency: course.quizFrequency || 0,
+            folder_id: course.folderId || null
         });
 
         // Insert Episodes if any
         if (course.episodes && Array.isArray(course.episodes)) {
             const epStmt = db.prepare(`
-                INSERT INTO episodes (id, courseId, title, title_en, duration, videoUrl, orderIndex, isLocked)
-                VALUES (@id, @courseId, @title, @title_en, @duration, @videoUrl, @orderIndex, @isLocked)
-            `);
+                INSERT INTO episodes(id, courseId, title, title_en, duration, videoUrl, orderIndex, isLocked)
+        VALUES(@id, @courseId, @title, @title_en, @duration, @videoUrl, @orderIndex, @isLocked)
+                `);
             for (const ep of course.episodes) {
                 epStmt.run({
                     id: ep.id ? String(ep.id) : ('ep_' + Date.now() + Math.random()),
@@ -159,16 +329,16 @@ router.put('/:id', authenticateToken, (req, res) => {
     const updates = req.body;
     try {
         // Update basic course info
-        const allowedFields = ['title', 'title_en', 'instructor', 'instructor_en', 'category', 'category_en', 'duration', 'duration_en', 'thumbnail', 'description', 'description_en', 'lessons_count', 'students_count', 'video_url', 'status', 'passing_score', 'quiz_frequency'];
-        const fieldsToUpdate = Object.keys(updates).filter(k => allowedFields.includes(k) || k === 'titleEn' || k === 'instructorEn' || k === 'quizFrequency');
+        const allowedFields = ['title', 'title_en', 'instructor', 'instructor_en', 'category', 'category_en', 'duration', 'duration_en', 'thumbnail', 'description', 'description_en', 'lessons_count', 'students_count', 'video_url', 'status', 'passing_score', 'quiz_frequency', 'folder_id'];
+        const fieldsToUpdate = Object.keys(updates).filter(k => allowedFields.includes(k) || k === 'titleEn' || k === 'instructorEn' || k === 'quizFrequency' || k === 'folderId');
 
         if (fieldsToUpdate.length > 0) {
             const setClause = fieldsToUpdate.map(k => {
-                const dbKey = k === 'titleEn' ? 'title_en' : k === 'instructorEn' ? 'instructor_en' : k === 'quizFrequency' ? 'quiz_frequency' : k;
+                const dbKey = k === 'titleEn' ? 'title_en' : k === 'instructorEn' ? 'instructor_en' : k === 'quizFrequency' ? 'quiz_frequency' : k === 'folderId' ? 'folder_id' : k;
                 return `${dbKey} = ?`;
             }).join(', ');
             const values = fieldsToUpdate.map(k => updates[k]);
-            db.prepare(`UPDATE courses SET ${setClause} WHERE id = ?`).run(...values, id);
+            db.prepare(`UPDATE courses SET ${setClause} WHERE id = ? `).run(...values, id);
         }
 
         // Sync Episodes
@@ -177,8 +347,8 @@ router.put('/:id', authenticateToken, (req, res) => {
             db.prepare('DELETE FROM episodes WHERE courseId = ?').run(id);
             // Insert new ones
             const epStmt = db.prepare(`
-                INSERT INTO episodes (id, courseId, title, title_en, duration, videoUrl, orderIndex, isLocked)
-                VALUES (@id, @courseId, @title, @title_en, @duration, @videoUrl, @orderIndex, @isLocked)
+                INSERT INTO episodes(id, courseId, title, title_en, duration, videoUrl, orderIndex, isLocked)
+        VALUES(@id, @courseId, @title, @title_en, @duration, @videoUrl, @orderIndex, @isLocked)
             `);
             for (const ep of updates.episodes) {
                 epStmt.run({

@@ -1,13 +1,79 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Database, HardDrive, Cloud, Download, Upload, RefreshCw, Clock, CheckCircle, AlertTriangle, Settings, Save } from 'lucide-react';
 import { api } from '../services/api';
 
 const AdminBackupSettings: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [backups, setBackups] = useState([
-        { id: 1, name: 'نسخة احتياطية كاملة', date: new Date().toLocaleDateString('en-CA') + ' 10:30', size: '2.4 MB', status: 'success', type: 'full' },
-        { id: 2, name: 'نسخة تلقائية', date: new Date(Date.now() - 86400000).toLocaleDateString('en-CA') + ' 03:00', size: '1.8 MB', status: 'success', type: 'auto' },
-    ]);
+    const [backups, setBackups] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [settings, setSettings] = useState({
+        autoBackup: false,
+        cloudStorage: false,
+        retention: '30'
+    });
+
+    const fetchBackups = async (cloudEnabled: boolean) => {
+        if (!cloudEnabled) {
+            setBackups([]);
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const data = await api.r2.listFiles('backups/');
+            const mappedBackups = (data.files || []).map(f => ({
+                id: f.id || f.fullName,
+                name: f.name || f.fullName.split('/').pop(),
+                date: new Date(f.lastModified || Date.now()).toLocaleString('en-CA'),
+                size: ((f.size || 0) / 1024 / 1024).toFixed(2) + ' MB',
+                status: 'success',
+                type: 'cloud',
+                url: f.url
+            })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setBackups(mappedBackups);
+        } catch (e) {
+            console.error('Failed to fetch R2 backups', e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const data = await api.getBackupSettings();
+                const cloudEnabled = data.cloud_backup_enabled;
+                setSettings({
+                    autoBackup: data.auto_backup_enabled,
+                    cloudStorage: cloudEnabled,
+                    retention: data.backup_retention_days || '30'
+                });
+                fetchBackups(cloudEnabled);
+            } catch (e) {
+                console.error('Failed to load backup settings', e);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    const toggleSetting = async (key: keyof typeof settings) => {
+        const newSettings = { ...settings, [key]: !settings[key] };
+        setSettings(newSettings);
+
+        try {
+            await api.updateBackupSettings({
+                auto_backup_enabled: newSettings.autoBackup,
+                cloud_backup_enabled: newSettings.cloudStorage,
+                backup_retention_days: newSettings.retention
+            });
+            if (key === 'cloudStorage') {
+                fetchBackups(newSettings.cloudStorage);
+            }
+        } catch (e) {
+            console.error('Failed to save setting', e);
+            // Revert on failure
+            setSettings(settings);
+        }
+    };
 
     const handleCreateBackup = async () => {
         try {
@@ -40,9 +106,11 @@ const AdminBackupSettings: React.FC = () => {
                 date: new Date().toLocaleString('en-CA'),
                 size: (res.size / 1024 / 1024).toFixed(2) + ' MB',
                 status: 'success',
-                type: 'auto'
+                type: 'auto',
+                url: res.url
             };
             setBackups([newBackup, ...backups]);
+            fetchBackups(settings.cloudStorage);
         } catch (e) {
             alert('فشل الرفع للسحابة. تأكد من إعدادات S3/R2.');
             console.error(e);
@@ -74,11 +142,19 @@ const AdminBackupSettings: React.FC = () => {
     };
 
     const stats = [
-        { label: 'آخر نسخة', value: backups[0]?.date || 'N/A', icon: Clock, color: 'from-emerald-500 to-teal-600' },
-        { label: 'حجم التخزين', value: '15.6 MB', icon: HardDrive, color: 'from-blue-500 to-cyan-600' },
+        { label: 'آخر نسخة', value: backups[0]?.date?.split(' ')[0] || 'لا يوجد', icon: Clock, color: 'from-emerald-500 to-teal-600' },
+        { label: 'حجم التخزين', value: backups.length > 0 ? backups.reduce((acc, b) => acc + parseFloat(b.size), 0).toFixed(1) + ' MB' : '0 MB', icon: HardDrive, color: 'from-blue-500 to-cyan-600' },
         { label: 'النسخ المحفوظة', value: backups.length.toString(), icon: Database, color: 'from-violet-500 to-purple-600' },
-        { label: 'التخزين السحابي', value: 'محلي', icon: Cloud, color: 'from-amber-500 to-orange-600' },
+        { label: 'التخزين السحابي', value: settings.cloudStorage ? 'سحابي (R2)' : 'محلي فقط', icon: Cloud, color: settings.cloudStorage ? 'from-blue-400 to-indigo-500' : 'from-amber-500 to-orange-600' },
     ];
+
+    const handleDownloadIndividual = (backup: any) => {
+        if (backup.url) {
+            window.open(backup.url, '_blank');
+        } else {
+            handleCreateBackup();
+        }
+    };
 
     return (
         <div className="animate-fade-in space-y-6">
@@ -92,7 +168,7 @@ const AdminBackupSettings: React.FC = () => {
                         type="file"
                         ref={fileInputRef}
                         className="hidden"
-                        accept=".json"
+                        accept=".sqlite"
                         onChange={handleFileChange}
                     />
                     <button
@@ -143,8 +219,11 @@ const AdminBackupSettings: React.FC = () => {
                                 <p className="text-white font-medium">النسخ التلقائي</p>
                                 <p className="text-gray-400 text-sm">نسخ احتياطي يومي الساعة 3 صباحاً</p>
                             </div>
-                            <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
-                                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full" />
+                            <div
+                                onClick={() => toggleSetting('autoBackup')}
+                                className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${settings.autoBackup ? 'bg-emerald-500' : 'bg-gray-600'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${settings.autoBackup ? 'left-7' : 'left-1'}`} />
                             </div>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
@@ -152,19 +231,38 @@ const AdminBackupSettings: React.FC = () => {
                                 <p className="text-white font-medium">التخزين السحابي</p>
                                 <p className="text-gray-400 text-sm">رفع تلقائي إلى السحابة</p>
                             </div>
-                            <div className="w-12 h-6 bg-gray-600 rounded-full relative cursor-pointer">
-                                <div className="absolute left-1 top-1 w-4 h-4 bg-gray-400 rounded-full" />
+                            <div
+                                onClick={() => toggleSetting('cloudStorage')}
+                                className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${settings.cloudStorage ? 'bg-emerald-500' : 'bg-gray-600'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${settings.cloudStorage ? 'left-7' : 'left-1'}`} />
                             </div>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
                             <div>
                                 <p className="text-white font-medium">الاحتفاظ بالنسخ</p>
-                                <p className="text-gray-400 text-sm">حذف النسخ الأقدم من 30 يوم</p>
+                                <p className="text-gray-400 text-sm">حذف النسخ الأقدم من الكود المختار</p>
                             </div>
-                            <select className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                                <option>30 يوم</option>
-                                <option>60 يوم</option>
-                                <option>90 يوم</option>
+                            <select
+                                value={settings.retention}
+                                onChange={async (e) => {
+                                    const val = e.target.value;
+                                    setSettings(prev => ({ ...prev, retention: val }));
+                                    try {
+                                        await api.updateBackupSettings({
+                                            auto_backup_enabled: settings.autoBackup,
+                                            cloud_backup_enabled: settings.cloudStorage,
+                                            backup_retention_days: val
+                                        });
+                                    } catch (err) {
+                                        console.error('Failed to save retention', err);
+                                    }
+                                }}
+                                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
+                            >
+                                <option value="30">30 يوم</option>
+                                <option value="60">60 يوم</option>
+                                <option value="90">90 يوم</option>
                             </select>
                         </div>
                     </div>
@@ -174,21 +272,39 @@ const AdminBackupSettings: React.FC = () => {
                     <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                         <Database className="w-5 h-5" /> النسخ الأخيرة
                     </h3>
-                    <div className="space-y-3">
-                        {backups.map((backup) => (
-                            <div key={backup.id} className="flex items-center gap-4 p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors">
-                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${backup.status === 'success' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
-                                    {backup.status === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-400" /> : <AlertTriangle className="w-5 h-5 text-red-400" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-white font-medium text-sm">{backup.name}</p>
-                                    <p className="text-gray-400 text-xs">{backup.date} • {backup.size}</p>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white"><Download className="w-4 h-4" /></button>
-                                </div>
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
+                                <RefreshCw className="w-6 h-6 animate-spin" />
+                                <p className="text-sm">جاري جلب النسخ من السحابة...</p>
                             </div>
-                        ))}
+                        ) : backups.length === 0 ? (
+                            <div className="text-center py-10 text-gray-500">
+                                <p>لا توجد نسخ احتياطية حالياً</p>
+                                {!settings.cloudStorage && <p className="text-xs mt-1">قم بتفعيل التخزين السحابي لرؤية النسخ السحابية</p>}
+                            </div>
+                        ) : (
+                            backups.map((backup) => (
+                                <div key={backup.id} className="flex items-center gap-4 p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${backup.status === 'success' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+                                        {backup.status === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-400" /> : <AlertTriangle className="w-5 h-5 text-red-400" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-white font-medium text-sm truncate" title={backup.name}>{backup.name}</p>
+                                        <p className="text-gray-400 text-[10px]">{backup.date} • {backup.size}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => handleDownloadIndividual(backup)}
+                                            className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white"
+                                            title="تحميل النسخة"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

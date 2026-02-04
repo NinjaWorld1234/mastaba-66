@@ -39,9 +39,17 @@ function initDatabase() {
             country TEXT,
             age INTEGER,
             gender TEXT,
-            educationLevel TEXT
+            educationLevel TEXT,
+            supervisor_id TEXT,
+            supervisor_capacity INTEGER,
+            supervisor_priority INTEGER
         )
     `);
+
+  // Migration for users table (Supervisor Support)
+  try { db.prepare('ALTER TABLE users ADD COLUMN supervisor_id TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE users ADD COLUMN supervisor_capacity INTEGER DEFAULT 10').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE users ADD COLUMN supervisor_priority INTEGER DEFAULT 0').run(); } catch (e) { }
 
   // --- Courses Table ---
   db.exec(`
@@ -64,9 +72,25 @@ function initDatabase() {
             status TEXT DEFAULT 'published',
             passing_score INTEGER DEFAULT 80,
             quiz_frequency INTEGER DEFAULT 0,
+            order_index INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+  // --- Course Folders Table ---
+  db.exec(`
+        CREATE TABLE IF NOT EXISTS course_folders (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            thumbnail TEXT,
+            order_index INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+  // Migration for courses table
+  try { db.prepare('ALTER TABLE courses ADD COLUMN folder_id TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE courses ADD COLUMN order_index INTEGER DEFAULT 0').run(); } catch (e) { }
 
   // --- Episodes Table ---
   db.exec(`
@@ -127,6 +151,39 @@ function initDatabase() {
         )
     `);
 
+  // --- System Settings Table ---
+  db.exec(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+  // Initialize default backup settings if not exist
+  const defaultSettings = [
+    { key: 'auto_backup_enabled', value: '1' },
+    { key: 'cloud_backup_enabled', value: '1' },
+    { key: 'backup_retention_days', value: '30' }
+  ];
+
+  defaultSettings.forEach(setting => {
+    try {
+      const exists = db.prepare('SELECT 1 FROM system_settings WHERE key = ?').get(setting.key);
+      if (!exists) {
+        db.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?)').run(setting.key, setting.value);
+      }
+    } catch (e) {
+      console.error('[DB_INIT_SETTINGS_ERROR]:', e.message);
+    }
+  });
+
+  // Migration for certificates table
+  try { db.prepare('ALTER TABLE certificates ADD COLUMN user_name TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE certificates ADD COLUMN course_title TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE certificates ADD COLUMN student_id TEXT').run(); } catch (e) { }
+
+
   // --- Quizzes Table ---
   db.exec(`
         CREATE TABLE IF NOT EXISTS quizzes (
@@ -173,6 +230,22 @@ function initDatabase() {
         )
     `);
 
+  // --- Books (Linked to Courses) ---
+  db.exec(`
+        CREATE TABLE IF NOT EXISTS books (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            path TEXT NOT NULL,
+            courseId TEXT,
+            createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(courseId) REFERENCES courses(id) ON DELETE SET NULL
+        )
+    `);
+
+  // Migration for books
+  try { db.prepare('ALTER TABLE books ADD COLUMN courseId TEXT').run(); } catch (e) { }
+
+
   db.exec(`CREATE TABLE IF NOT EXISTS community_posts (id TEXT PRIMARY KEY, userId TEXT, content TEXT, timestamp TEXT)`);
 
   // --- Other Tables ---
@@ -198,8 +271,36 @@ function initDatabase() {
   try { db.prepare('ALTER TABLE messages ADD COLUMN attachmentType TEXT').run(); } catch (e) { }
   try { db.prepare('ALTER TABLE messages ADD COLUMN attachmentName TEXT').run(); } catch (e) { }
   try { db.prepare('ALTER TABLE messages ADD COLUMN expiryDate TEXT').run(); } catch (e) { }
+  try { db.prepare('ALTER TABLE messages ADD COLUMN isComplaint INTEGER DEFAULT 0').run(); } catch (e) { }
 
   db.exec(`CREATE TABLE IF NOT EXISTS favorites (id TEXT PRIMARY KEY, userId TEXT, targetId TEXT, type TEXT, createdAt TEXT)`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ratings (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      userName TEXT NOT NULL,
+      userCountry TEXT,
+      rating INTEGER NOT NULL,
+      comment TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rating_replies (
+      id TEXT PRIMARY KEY,
+      ratingId TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      userName TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(ratingId) REFERENCES ratings(id) ON DELETE CASCADE,
+      FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 
   db.exec(`CREATE TABLE IF NOT EXISTS system_activity_logs (id TEXT PRIMARY KEY, action TEXT, userId TEXT, details TEXT, timestamp TEXT)`);
 
@@ -219,6 +320,15 @@ function initDatabase() {
     {
       id: "2", email: "admin@example.com", passwordPlain: "admin123",
       role: "admin", name: "مدير النظام"
+    },
+    {
+      id: "manual_recipient", email: "manual@example.com", passwordPlain: "manual123",
+      role: "student", name: "مستلم شهادة يدوي"
+    },
+    // Adding Naser (Admin)
+    {
+      id: "u_naser_admin", email: "naser@myf-online.com", passwordPlain: "naser2024",
+      role: "admin", name: "المشرف العام"
     }
   ];
 
@@ -227,8 +337,6 @@ function initDatabase() {
     const hash = bcrypt.hashSync(defUser.passwordPlain, 10);
 
     if (existing) {
-      // Optional: Force reset password on startup if needed, or leave as is
-      // For safety in this migration, let's update it to ensure login works
       if (!bcrypt.compareSync(defUser.passwordPlain, existing.password)) {
         console.log(`Resetting password for ${defUser.email}`);
         updateUserPass.run(hash, existing.id);
@@ -245,6 +353,39 @@ function initDatabase() {
         emailVerified: 1,
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(defUser.name)}&background=random`
       });
+    }
+  }
+
+  // --- Seed Initial Folder if not exists ---
+  const initialFolderId = 'foundation_shariah';
+  const folderExists = db.prepare('SELECT id FROM course_folders WHERE id = ?').get(initialFolderId);
+  if (!folderExists) {
+    console.log('Seeding initial foundational folder...');
+    db.prepare(`
+            INSERT INTO course_folders (id, name, thumbnail, order_index)
+            VALUES (?, ?, ?, ?)
+        `).run(initialFolderId, 'الدورة التأسيسية للعلوم الشرعية', 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=800&h=450&fit=crop', 0);
+
+    // Link all current courses to this folder
+    db.prepare('UPDATE courses SET folder_id = ? WHERE folder_id IS NULL').run(initialFolderId);
+  }
+
+  // --- ONE-TIME RESET: Sequential Progress enforcement ---
+  // This is added to meet the user's request to "out the current students from all courses"
+  // and ensure they follow the new sequence. Since this is a specialized request,
+  // we execute it AND THEN add a flag to ensure it doesn't run every time.
+  const resetFile = path.join(dataDir, '.sequential_reset_done');
+  if (!fs.existsSync(resetFile)) {
+    console.log('ENFORCING SEQUENTIAL RESET: Clearing all enrollments and progress...');
+    try {
+      db.prepare('DELETE FROM enrollments').run();
+      db.prepare('DELETE FROM episode_progress').run();
+      db.prepare('DELETE FROM quiz_results').run();
+      db.prepare('UPDATE courses SET students_count = 0').run();
+      fs.writeFileSync(resetFile, 'Reset completed on ' + new Date().toISOString());
+      console.log('SEQUENTIAL RESET COMPLETED.');
+    } catch (e) {
+      console.error('Error during sequential reset:', e);
     }
   }
 

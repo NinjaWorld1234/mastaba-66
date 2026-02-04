@@ -8,6 +8,7 @@ import { Users, Mic2, TrendingUp, Download, Calendar, Activity, Bell, Play, Luci
 import { RECENT_ACTIVITY } from '../constants';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { api } from '../services/api';
+import RatingBox from './RatingBox';
 
 /**
  * Admin Dashboard props
@@ -419,6 +420,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = memo(({ setActiveTab, unre
                   عرض السجل الكامل
                </button>
             </section>
+         </div>
+
+         {/* Rating Section */}
+         <div className="mt-8">
+            <RatingBox />
          </div>
       </div>
    );

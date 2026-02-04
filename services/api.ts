@@ -13,6 +13,8 @@ import { quizzesApi } from './api/quizzes';
 import { contentApi } from './api/content';
 import { socialApi } from './api/social';
 import { adminApi } from './api/admin';
+import { supervisorApi } from './api/supervisors';
+import { foldersApi } from './api/folders';
 
 export { getAuthToken };
 
@@ -23,6 +25,7 @@ export const api = {
 
     // Courses
     ...coursesApi,
+    ...foldersApi,
 
     // content (Library & Announcements)
     ...contentApi,
@@ -35,6 +38,9 @@ export const api = {
 
     // Admin (Logs, Certificates, R2)
     ...adminApi,
+
+    // Supervisors
+    supervisors: supervisorApi,
 
     // Search (Maintained here for now as it aggregates from multiple services)
     search: async (query: string) => {
