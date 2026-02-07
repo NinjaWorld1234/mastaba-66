@@ -92,7 +92,11 @@ router.post('/register', async (req, res) => {
             VALUES (@id, @email, @password, @name, @nameEn, @role, @points, @level, @joinDate, @verificationCode, @verificationExpiry, @emailVerified, @whatsapp, @country, @age, @gender, @educationLevel, @supervisor_id)
         `).run(newUser);
 
-        await sendVerificationEmail(email, otp);
+        // Send verification email (non-blocking to prevent SMTP timeout from failing registration)
+        sendVerificationEmail(email, name, otp).catch(emailErr => {
+            console.error('[Registration] Email sending failed:', emailErr.message);
+        });
+
         res.status(201).json({ success: true, message: 'User registered. Please verify email.' });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -125,7 +129,10 @@ router.post('/resend-otp', async (req, res) => {
         const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
         const result = db.prepare('UPDATE users SET verificationCode = ?, verificationExpiry = ? WHERE LOWER(email) = LOWER(?)').run(otp, expiry, email);
         if (result.changes === 0) return res.status(404).json({ error: 'User not found' });
-        await sendVerificationEmail(email, otp);
+        const user = db.prepare('SELECT name FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        await sendVerificationEmail(email, user.name, otp);
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e.message });

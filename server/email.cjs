@@ -1,17 +1,21 @@
 const nodemailer = require('nodemailer');
 
-// Configure Nodemailer transporter for Outlook
+// Configure Nodemailer transporter for Gmail with timeouts
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp-mail.outlook.com',
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false, // true for 465, false for others
+  secure: process.env.SMTP_PORT === '465', // true for 465, false for 587
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
   tls: {
-    ciphers: 'SSLv3'
-  }
+    rejectUnauthorized: false
+  },
+  // CRITICAL: Add timeouts to prevent server hanging on SMTP issues
+  connectionTimeout: 10000, // 10 seconds to establish connection
+  greetingTimeout: 10000,   // 10 seconds for greeting
+  socketTimeout: 15000      // 15 seconds for the entire operation
 });
 
 // Log warning if no credentials
@@ -40,8 +44,9 @@ async function sendVerificationEmail(email, name, otp) {
       return { success: true, data: { simulated: true, otp } };
     }
 
+    const fromName = process.env.SMTP_FROM_NAME || "المصطبة العلمية";
     const info = await transporter.sendMail({
-      from: `"المصطبة العلمية" <${process.env.SMTP_USER}>`,
+      from: `"${fromName}" <${process.env.SMTP_USER}>`,
       to: email,
       subject: 'رمز التحقق من بريدك الإلكتروني - المصطبة العلمية',
       html: `
