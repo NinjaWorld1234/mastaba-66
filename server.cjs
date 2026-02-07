@@ -1,4 +1,13 @@
-require('dotenv').config();
+const result = require('dotenv').config();
+if (result.error) {
+    console.error('[dotenv] Error loading .env file:', result.error.message);
+} else {
+    const keys = Object.keys(result.parsed || {});
+    console.log(`[dotenv] Successfully loaded ${keys.length} environment variables from .env`);
+    if (keys.length === 0) {
+        console.warn('[dotenv] WARNING: .env file found but it appears to be empty or misformatted.');
+    }
+}
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -36,10 +45,16 @@ const allowedOrigins = [
     'https://myf-online.com',
     'https://www.myf-online.com',
     'http://147.93.62.42:3001', 'http://147.93.62.42',
-    process.env.FRONTEND_URL
-].filter(Boolean);
+    'http://72.61.88.213:3001', 'http://72.61.88.213',
+    'https://muslimyouth.ps', 'http://muslimyouth.ps',
+    process.env.FRONTEND_URL,
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
+].map(o => o?.trim()).filter(Boolean);
 
 console.log('[Auth] Allowed Origins:', allowedOrigins);
+if (allowedOrigins.length === 0) {
+    console.warn('[CORS] WARNING: No origins allowed! Frontend may be blocked.');
+}
 
 const corsOptions = {
     origin: function (origin, callback) {
@@ -62,8 +77,8 @@ const corsOptions = {
         }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 };
 
 app.use(cors(corsOptions));
