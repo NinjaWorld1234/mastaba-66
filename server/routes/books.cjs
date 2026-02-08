@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../database.cjs');
 const { v4: uuidv4 } = require('uuid');
+const { generateDownloadUrl } = require('../r2.cjs');
 const path = require('path');
 const fs = require('fs');
 
 // GET all books
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
         const books = db.prepare(`
             SELECT books.*, courses.title as courseTitle 
@@ -14,7 +15,21 @@ router.get('/', (req, res) => {
             LEFT JOIN courses ON books.courseId = courses.id
             ORDER BY books.createdAt DESC
         `).all();
-        res.json(books);
+
+        // Sign URLs
+        const signedBooks = await Promise.all(books.map(async (book) => {
+            if (book.path) {
+                try {
+                    // Books are stored in the Books/ prefix in R2
+                    book.url = await generateDownloadUrl(`Books/${book.path}`);
+                } catch (e) {
+                    console.error(`Failed to sign URL for book ${book.id}:`, e);
+                }
+            }
+            return book;
+        }));
+
+        res.json(signedBooks);
     } catch (error) {
         console.error('Error fetching books:', error);
         res.status(500).json({ error: 'Failed to fetch books' });
@@ -22,10 +37,20 @@ router.get('/', (req, res) => {
 });
 
 // GET book by course ID
-router.get('/course/:courseId', (req, res) => {
+router.get('/course/:courseId', async (req, res) => {
     try {
         const book = db.prepare('SELECT * FROM books WHERE courseId = ?').get(req.params.courseId);
         if (!book) return res.status(404).json({ error: 'Book not found for this course' });
+
+        // Sign URL
+        if (book.path) {
+            try {
+                book.url = await generateDownloadUrl(`Books/${book.path}`);
+            } catch (e) {
+                console.error(`Failed to sign URL for book ${book.id}:`, e);
+            }
+        }
+
         res.json(book);
     } catch (error) {
         console.error('Error fetching book for course:', error);

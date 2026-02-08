@@ -237,11 +237,11 @@ const AppContent: React.FC = () => {
                 let password = '';
 
                 if (role === 'admin') {
-                  email = 'admin@example.com';
-                  password = 'admin123';
+                  email = 'admin@myf-online.com';
+                  password = 'mastaba_admin_2024';
                 } else if (role === 'supervisor') {
-                  email = 'a@a.com';
-                  password = '111';
+                  email = 'supervisor@myf-online.com';
+                  password = 'mastaba_supervisor_2024';
                 } else {
                   email = 'ahmed@example.com';
                   password = '123456';

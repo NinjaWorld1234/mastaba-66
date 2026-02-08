@@ -215,7 +215,11 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab, 
    const COLORS = useMemo(() => ['#10b981', 'rgba(255,255,255,0.1)'], []);
 
    /** Get displayed courses (first 4 enrolled) */
-   const displayedCourses = useMemo(() => enrolledCourses.slice(0, 4), [enrolledCourses]);
+   const displayedCourses = useMemo(() => {
+      return [...enrolledCourses]
+         .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+         .slice(0, 4);
+   }, [enrolledCourses]);
 
    /** User statistics from context with safe fallbacks */
    const userPoints = (user && typeof user.points === 'number') ? user.points : 0;
@@ -242,7 +246,7 @@ const Dashboard: React.FC<DashboardProps> = memo(({ onPlayCourse, setActiveTab, 
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {courses.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).map((course, index) => {
+                  {[...courses].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).map((course, index) => {
                      const folder = folders.find(f => f.id === course.folderId);
 
                      // Prerequisite Logic:

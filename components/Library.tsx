@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Book, FileText, Download, Search, Filter, BookOpen } from 'lucide-react';
 import { useLanguage } from './LanguageContext';
+import { api } from '../services/api';
 
 interface BookItem {
    id: string;
@@ -9,6 +10,7 @@ interface BookItem {
    courseId?: string;
    courseTitle?: string;
    createdAt: string;
+   url?: string;
 }
 
 const Library: React.FC = () => {
@@ -20,11 +22,8 @@ const Library: React.FC = () => {
    useEffect(() => {
       const fetchBooks = async () => {
          try {
-            const res = await fetch('http://localhost:5000/api/books');
-            if (res.ok) {
-               const data = await res.json();
-               setBooks(data);
-            }
+            const data = await api.getBooks();
+            setBooks(data);
          } catch (error) {
             console.error('Error fetching library books:', error);
          } finally {
@@ -83,7 +82,7 @@ const Library: React.FC = () => {
 
                      <div className="mt-auto border-t border-white/5 pt-3">
                         <a
-                           href={`https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/Books/${book.path}`}
+                           href={book.url || book.path}
                            target="_blank"
                            rel="noopener noreferrer"
                            className="flex items-center justify-center gap-2 w-full py-2 bg-white/5 hover:bg-emerald-600 hover:text-white text-emerald-400 rounded-xl text-sm font-bold transition-all"

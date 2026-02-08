@@ -9,7 +9,7 @@ interface Book {
     path: string; // Filename in /Books folder
     courseId?: string;
     courseTitle?: string;
-    createdAt: string;
+    url?: string;
 }
 
 interface Course {
@@ -233,7 +233,7 @@ const AdminLibrary: React.FC = () => {
                                         </div>
                                     </td>
                                     <td className="py-4 px-6 text-gray-400 font-mono text-sm" dir="ltr">
-                                        <a href={`https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/Books/${book.path}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400">
+                                        <a href={book.url || `https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/Books/${book.path}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400">
                                             {book.path}
                                         </a>
                                     </td>

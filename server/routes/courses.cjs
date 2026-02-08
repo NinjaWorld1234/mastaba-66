@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database.cjs');
+const { generateDownloadUrl } = require('../r2.cjs');
 
 // Middleware to be passed from server.cjs or defined here
 function authenticateToken(req, res, next) {
@@ -16,7 +17,7 @@ function authenticateToken(req, res, next) {
 }
 
 // Get all courses (Optionally authenticated to get progress)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
         // Optional Auth check
         let userId = null;
@@ -32,7 +33,12 @@ router.get('/', (req, res) => {
             }
         }
 
-        const courses = db.prepare('SELECT * FROM courses ORDER BY order_index ASC, created_at DESC').all();
+        const courses = db.prepare(`
+            SELECT c.*, b.path as book_path 
+            FROM courses c 
+            LEFT JOIN books b ON c.id = b.courseId 
+            ORDER BY c.order_index ASC, c.created_at DESC
+        `).all();
 
         // Fetch all passed quizzes for this user to determine locking
         let passedCourseIds = new Set();
@@ -46,8 +52,18 @@ router.get('/', (req, res) => {
             passedResults.forEach(r => passedCourseIds.add(String(r.courseId)));
         }
 
-        const coursesWithExtra = courses.map((c, index) => {
+        const coursesWithExtra = await Promise.all(courses.map(async (c, index) => {
             const episodes = db.prepare('SELECT * FROM episodes WHERE courseId = ? ORDER BY orderIndex ASC').all(c.id);
+
+            // Fetch signed book URL if exists
+            let bookUrl = null;
+            if (c.book_path) {
+                try {
+                    bookUrl = await generateDownloadUrl(`Books/${c.book_path}`);
+                } catch (e) {
+                    console.error(`Failed to sign book URL for course ${c.id}:`, e);
+                }
+            }
 
             // Get progress if userId is known
             let progress = 0;
@@ -105,6 +121,7 @@ router.get('/', (req, res) => {
                 quizFrequency: c.quiz_frequency,
                 folderId: c.folder_id,
                 orderIndex: c.order_index,
+                bookPath: bookUrl,
                 progress: progress,
                 isLocked: isLocked,
                 isEnrolled: userId ? !!db.prepare('SELECT 1 FROM enrollments WHERE user_id = ? AND course_id = ?').get(userId, c.id) : false,
@@ -133,7 +150,7 @@ router.get('/', (req, res) => {
                     };
                 })
             };
-        });
+        }));
         res.json(coursesWithExtra);
     } catch (e) {
         console.error('Error fetching courses:', e);

@@ -12,7 +12,7 @@ const r2Client = new S3Client({
 });
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'mastaba-media';
-const R2_PUBLIC_DOMAIN = process.env.R2_PUBLIC_DOMAIN || 'pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev';
+const R2_PUBLIC_DOMAIN = process.env.R2_PUBLIC_DOMAIN || '';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'GET') {

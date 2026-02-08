@@ -138,7 +138,7 @@ const Player: React.FC<PlayerProps> = ({ course, onBack, onPlayCourse }) => {
     }
   }, [currentEpisodeIndex, maxReachedIndex]);
 
-  const [attachedBook, setAttachedBook] = useState<{ title: string, path: string } | null>(null);
+  const [attachedBook, setAttachedBook] = useState<{ title: string, path: string, url?: string } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -164,13 +164,8 @@ const Player: React.FC<PlayerProps> = ({ course, onBack, onPlayCourse }) => {
 
         // Fetch attached book
         try {
-          const bookRes = await fetch(`http://localhost:5000/api/books/course/${course.id}`);
-          if (bookRes.ok) {
-            const bookData = await bookRes.json();
-            setAttachedBook(bookData);
-          } else {
-            setAttachedBook(null); // Clear if not found
-          }
+          const bookData = await api.getBookByCourseId(course.id);
+          setAttachedBook(bookData);
         } catch (err) {
           console.error("Failed to fetch book:", err);
           setAttachedBook(null);
@@ -400,14 +395,15 @@ const Player: React.FC<PlayerProps> = ({ course, onBack, onPlayCourse }) => {
                     {/* Book Download Button */}
                     {attachedBook && (
                       <a
-                        href={`https://pub-7ec5f52937cb4e729e07ecf35b1cf007.r2.dev/Books/${attachedBook.path}`}
+                        href={attachedBook.url || attachedBook.path}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-1 rounded-lg transition-colors text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all shadow-lg animate-pulse-subtle"
                         title="تحميل الكتاب المرافق"
                         download
                       >
-                        <Book className="w-4 h-4" />
+                        <Book className="w-5 h-5" />
+                        <span className="text-xs font-bold whitespace-nowrap">تحميل الكتاب</span>
                       </a>
                     )}
                   </div>
@@ -720,7 +716,8 @@ const Player: React.FC<PlayerProps> = ({ course, onBack, onPlayCourse }) => {
                 preload="metadata"
                 controlsList="nodownload"
                 onContextMenu={(e) => e.preventDefault()}
-                className={`max-h-[70vh] w-auto max-w-full mx-auto block transition-opacity duration-300 ${videoLoading ? 'opacity-0' : 'opacity-100'}`}
+                onClick={() => setIsPlaying(prev => !prev)}
+                className={`max-h-[70vh] w-auto max-w-full mx-auto block transition-opacity duration-300 cursor-pointer ${videoLoading ? 'opacity-0' : 'opacity-100'}`}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => {
                   setIsPlaying(false);
@@ -742,7 +739,7 @@ const Player: React.FC<PlayerProps> = ({ course, onBack, onPlayCourse }) => {
               />
 
               {!isPlaying && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors cursor-pointer" onClick={() => setIsPlaying(true)}>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors cursor-pointer" onClick={() => setIsPlaying(prev => !prev)}>
                   <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20 group-hover:scale-110 transition-transform">
                     <Play className="w-10 h-10 text-white fill-current" />
                   </div>

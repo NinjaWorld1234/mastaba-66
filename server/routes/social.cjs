@@ -13,8 +13,13 @@ router.get('/messages', async (req, res) => {
         // Filter out expired messages dynamically or rely on cleanup
         // ALSO: Filter out complaints if the user is a student (one-way only)
         // AND: Allow admins to see ALL complaints regardless of recipient
-        const roleFilter = req.user.role === 'student' ? 'AND (isComplaint = 0 OR isComplaint IS NULL)' : '';
-        const adminComplaintAccess = req.user.role === 'admin' ? 'OR isComplaint = 1' : '';
+        // Students see: non-complaints OR messages they sent (so they see their own complaints)
+        const roleFilter = req.user.role === 'student'
+            ? 'AND (isComplaint = 0 OR isComplaint IS NULL OR senderId = ?)'
+            : '';
+
+        const params = [userId, userId, new Date().toISOString()];
+        if (req.user.role === 'student') params.push(userId);
 
         const messages = db.prepare(`
             SELECT * FROM messages 
@@ -22,17 +27,17 @@ router.get('/messages', async (req, res) => {
             AND (expiryDate IS NULL OR expiryDate > ?)
             ${roleFilter}
             ORDER BY timestamp ASC
-        `).all(userId, userId, new Date().toISOString());
+        `).all(...params);
 
         // Process messages to sign attachment URLs
         const signedMessages = await Promise.all(messages.map(async (msg) => {
-            if (msg.attachmentUrl && msg.attachmentUrl.includes('uploads/')) {
+            if (msg.attachmentUrl) {
                 try {
-                    // Extract key: assume typical URL structure ending in /uploads/KEY
-                    // Or if it's already a relative path (though usually stored as absolute)
-                    const parts = msg.attachmentUrl.split('uploads/');
-                    if (parts.length > 1) {
-                        const key = 'uploads/' + parts[1];
+                    // Robust extraction: if it contains 'uploads/', take everything after (and including) it
+                    // This handles R2_PUBLIC_DOMAIN/uploads/key and worker-urls/uploads/key
+                    const uploadsIdx = msg.attachmentUrl.indexOf('uploads/');
+                    if (uploadsIdx !== -1) {
+                        const key = msg.attachmentUrl.substring(uploadsIdx);
                         msg.attachmentUrl = await generateDownloadUrl(key);
                     }
                 } catch (e) {
@@ -194,16 +199,9 @@ router.post('/messages', (req, res) => {
 
         // Rule 3: Admin validation
         if (senderRole === 'admin') {
-            // Admin cannot reply to complaints (student is the receiver)
-            if (receiver.role === 'student' && isComplaint) {
-                return res.status(403).json({ error: 'لا يمكن الرد على الشكاوى والاقتراحات' });
-            }
-
-            // Admins can only start/continue conversations with Supervisors
-            // (Unless it's a specific "message student" feature which isn't requested here)
-            if (receiver.role !== 'supervisor' && receiver.role !== 'admin') {
-                return res.status(403).json({ error: 'يمكن للمدير مراسلة المشرفين فقط' });
-            }
+            // Admin can message Supervisors OR Students (as replies/support)
+            // No strict restriction, but we log it
+            console.log(`[ADMIN_MSG] Admin ${senderId} messaging ${receiver.role} ${receiverId}`);
         }
 
         const id = 'msg_' + Date.now();

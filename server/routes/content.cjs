@@ -12,14 +12,36 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../database.cjs');
 const { authenticateToken, requireAdmin } = require('../middleware.cjs');
+const { generateDownloadUrl } = require('../r2.cjs');
 
 // ============================================================================
 // Library Resources (Public GET, Admin POST)
 // ============================================================================
-router.get('/library', (req, res) => {
+router.get('/library', async (req, res) => {
     try {
         const resources = db.prepare('SELECT * FROM library_resources ORDER BY createdAt DESC').all();
-        res.json(resources);
+
+        // Sign URLs if they are R2 keys or contain R2 patterns
+        const signedResources = await Promise.all(resources.map(async (res) => {
+            if (res.url) {
+                try {
+                    // If it's a full URL including our R2 domain, extract the key
+                    const uploadsIdx = res.url.indexOf('Books/');
+                    const genIdx = res.url.indexOf('uploads/');
+                    const targetIdx = uploadsIdx !== -1 ? uploadsIdx : genIdx;
+
+                    if (targetIdx !== -1) {
+                        const key = res.url.substring(targetIdx);
+                        res.url = await generateDownloadUrl(key);
+                    }
+                } catch (e) {
+                    console.error('Failed to sign library URL:', res.id, e);
+                }
+            }
+            return res;
+        }));
+
+        res.json(signedResources);
     } catch (e) {
         console.error('[LIBRARY_GET_ERROR]:', e.message);
         res.status(500).json({ error: 'Failed to fetch library resources' });

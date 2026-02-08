@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Course, CourseFolder } from '../types';
 import { api } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
-import { Folder, ChevronRight, Plus, X, Image as ImageIcon, LayoutGrid, ArrowRight, Lock } from 'lucide-react';
+import { Folder, ChevronRight, Plus, X, Image as ImageIcon, LayoutGrid, ArrowRight, Lock, Book } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 interface CoursesGridProps {
@@ -274,6 +274,19 @@ const CoursesGrid: React.FC<CoursesGridProps> = ({ onPlayCourse }) => {
                                                 >
                                                     استمرار
                                                 </button>
+                                                {course.bookPath && (
+                                                    <a
+                                                        href={course.bookPath}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl font-bold text-[10px] transition-all flex items-center justify-center gap-2 border border-white/10"
+                                                        title="تحميل الكتاب"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Book className="w-3.5 h-3.5" />
+                                                        تحميل الكتاب
+                                                    </a>
+                                                )}
                                             </div>
                                         ) : course.isLocked ? (
                                             <button

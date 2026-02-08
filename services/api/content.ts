@@ -6,8 +6,18 @@ import { getAuthToken } from './auth';
 
 export const contentApi = {
     getLibraryResources: async (): Promise<LibraryResource[]> => {
-        const response = await fetch('/api/library');
+        const response = await fetch('/api/books');
         return response.ok ? await response.json() : [];
+    },
+
+    getBooks: async (): Promise<any[]> => {
+        const response = await fetch('/api/books');
+        return response.ok ? await response.json() : [];
+    },
+
+    getBookByCourseId: async (courseId: string): Promise<any> => {
+        const response = await fetch(`/api/books/course/${courseId}`);
+        return response.ok ? await response.json() : null;
     },
 
     getAnnouncements: async (): Promise<Announcement[]> => {

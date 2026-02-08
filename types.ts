@@ -141,6 +141,10 @@ export interface Course {
   passingScore?: number;
   /** Number of lessons between automated quizzes */
   quizFrequency?: number;
+  /** Attached book details */
+  attachedBook?: { id: string, title: string, path: string } | null;
+  /** Quick access path to the attached book */
+  bookPath?: string;
   /** Episode in this course */
   episodes?: Episode[];
   /** Associated folder identifier */
